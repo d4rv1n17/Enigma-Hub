@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -32,13 +33,32 @@ def existing_install():
         return None
 
 
+def reject_reparse(path):
+    """Never install or remove files through a link or Windows junction."""
+    path = Path(path).absolute()
+    for entry in (path, *path.parents):
+        try:
+            info = entry.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise ValueError("Choose a regular folder without links or junctions.")
+
+
+def validate_install_files(folder):
+    reject_reparse(folder)
+    names = (EXE, SETUP, MARKER, MARKER + ".new")
+    for name in names:
+        for suffix in ("", ".new", ".previous") if name.endswith(".exe") else ("",):
+            reject_reparse(folder / (name + suffix))
+
+
 def normalize_target(folder):
-    target = Path(folder).expanduser().resolve()
+    target = Path(folder).expanduser().absolute()
     if target.name.lower() != "enigma hub":
         target = target / "Enigma Hub"
-    if target.is_symlink() or (hasattr(target, "is_junction") and target.is_junction()):
-        raise ValueError("Choose a regular folder for Enigma Hub.")
-    return target
+    validate_install_files(target)
+    return target.resolve()
 
 
 def shortcut_path():
@@ -71,7 +91,7 @@ def install(folder, desktop=False, progress=lambda value: None):
             previous = json.loads((folder / MARKER).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raise ValueError("This folder contains other files. Choose an empty folder.")
-        if previous.get("product") != "Enigma Hub":
+        if not isinstance(previous, dict) or previous.get("product") != "Enigma Hub":
             raise ValueError("Choose a folder belonging to Enigma Hub.")
         desktop = desktop or bool(previous.get("desktop"))
     payload = ROOT / "payload" / EXE
@@ -131,9 +151,11 @@ def install(folder, desktop=False, progress=lambda value: None):
 
 
 def uninstall(folder, progress=lambda value: None):
-    folder = Path(folder).resolve()
+    folder = Path(folder).absolute()
+    validate_install_files(folder)
+    folder = folder.resolve()
     marker = json.loads((folder / MARKER).read_text(encoding="utf-8"))
-    if marker.get("product") != "Enigma Hub" or folder.name.lower() != "enigma hub":
+    if not isinstance(marker, dict) or marker.get("product") != "Enigma Hub" or folder.name.lower() != "enigma hub":
         raise ValueError("This folder is not an Enigma Hub installation.")
     # Only the two known installed executables are removed. User folders remain intact.
     for index, name in enumerate((EXE, SETUP)):

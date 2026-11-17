@@ -6,6 +6,9 @@ import subprocess
 import sys
 from hub_update import VERSION
 
+if sys.version_info < (3, 13):
+    raise RuntimeError("Use supported Python 3.13 or newer to build a release.")
+
 root = Path(__file__).resolve().parent
 output = root / "Output"
 payload = root / "build/payload"
@@ -33,4 +36,11 @@ checksums = [
     for file in release_files
 ]
 (output / "SHA256SUMS.txt").write_text("\n".join(checksums) + "\n", encoding="ascii")
+import importlib.metadata
+report = {
+    "version": VERSION,
+    "python": sys.version,
+    "packages": {name: importlib.metadata.version(name) for name in ("PyQt5", "PyQt5-Qt5", "PyQt5-sip", "PyInstaller")},
+}
+(output / "build-info.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
 print("Ready:", output / "EnigmaHubSetup.exe")

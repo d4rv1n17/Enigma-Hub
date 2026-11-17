@@ -18,11 +18,11 @@ Download **EnigmaHubSetup.exe** from [Releases](https://github.com/d4rv1n17/Enig
 
 ## Development
 
-Install Python 3.8+, install requirements.txt using pip, then run enigma_hub.py.
+Install Python 3.13+, install requirements.txt using pip, then run enigma_hub.py.
 
 ## Build a release
 
-Install requirements.txt and PyInstaller, then run build_release.py.
+Create a virtual environment with Python 3.13 or newer, install requirements-build.txt, then run build_release.py. The Windows release is built with Python 3.15. Output/build-info.json records the runtime and package versions.
 
 The Output directory contains EnigmaHub.exe, EnigmaHubSetup.exe, and SHA256SUMS.txt.
 
