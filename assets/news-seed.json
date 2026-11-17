@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Enigma Disk",
+    "tag": "v2.0.0",
+    "title": "Enigma Disk 2.0.0",
+    "body": "## Enigma Disk 2.0.0\r\n\r\nMajor update to **Enigma Disk** with the redesigned interface, disk map, file categories, duplicate search, folder history, HTML reports, notifications, and expanded cleanup options.\r\n\r\nIf Enigma Disk 2.0 is already installed, choose **Settings → Check for updates**. The app downloads and applies the update in place, then restarts. Your settings and snapshots stay where they are.\r\n\r\n## Download\r\n\r\n| File | What it is |\r\n|---|---|\r\n| **EnigmaDiskSetup.exe** | Installer (recommended). Installs for the current user, no administrator rights needed, adds Start menu / desktop shortcuts and an entry in Settings → Apps. |\r\n| **EnigmaDisk-portable.exe** | The same app without installation. Just run it. |\r\n\r\nRequirements: Windows 10 or 11, 64-bit. No .NET installation required.\r\n\r\n> The files are not code-signed yet, so Windows SmartScreen may show “Windows protected your PC”.\r\n> Click **More info → Run anyway**. You can verify the files with `SHA256SUMS.txt`.\r\n\r\n## What's inside\r\n\r\n- Folder-size snapshots and a **What grew** view (vs yesterday / a week / a month / the first snapshot)\r\n- Folder & large-file browser with weekly change\r\n- Safe cleanup of well-known caches and temporary files\r\n- Daily snapshots via Windows Task Scheduler\r\n- Hard links in the Windows folder are no longer counted twice\r\n- Russian and English interface\r\n\r\n---\r\n\r\nЕсли Enigma Disk 2.0 уже установлен, выберите **Настройки → Проверить обновления**. Приложение установит обновление поверх текущей версии и перезапустится; снимки и настройки сохранятся.\r\n\r\nДля новой установки скачайте **EnigmaDiskSetup.exe** и запустите. Если Windows покажет «Windows защитила ваш компьютер», нажмите **Подробнее → Выполнить в любом случае**.\r\n",
+    "url": "https://github.com/d4rv1n17/Enigma-Disk/releases/tag/v2.0.0",
+    "date": "2026-11-06"
+  },
+  {
+    "name": "Enigma Cube",
+    "tag": "v3.2.1",
+    "title": "Enigma Cube 3.2.1",
+    "body": "",
+    "url": "https://github.com/d4rv1n17/Enigma-Cube/releases/tag/v3.2.1",
+    "date": "2026-11-03"
+  },
+  {
+    "name": "Enigma Cube",
+    "tag": "v3.2",
+    "title": "Enigma Cube 3.2",
+    "body": "",
+    "url": "https://github.com/d4rv1n17/Enigma-Cube/releases/tag/v3.2",
+    "date": "2026-11-03"
+  },
+  {
+    "name": "Enigma Cube",
+    "tag": "v3.1",
+    "title": "Enigma Cube 3.1",
+    "body": "",
+    "url": "https://github.com/d4rv1n17/Enigma-Cube/releases/tag/v3.1",
+    "date": "2026-10-09"
+  },
+  {
+    "name": "Enigma Disk",
+    "tag": "v1.1.0",
+    "title": "Enigma Disk 1.1.0",
+    "body": "First public release of **Enigma Disk** — a Windows app that shows which folders grow on your disk and helps you clean up safely.\r\n\r\n## Download\r\n\r\n| File | What it is |\r\n|---|---|\r\n| **EnigmaDiskSetup.exe** | Installer (recommended). Installs for the current user, no administrator rights needed, adds Start menu / desktop shortcuts and an entry in Settings → Apps. |\r\n| **EnigmaDisk-portable.exe** | The same app without installation. Just run it. |\r\n\r\nRequirements: Windows 10 or 11, 64-bit. No .NET installation required.\r\n\r\n> The files are not code-signed yet, so Windows SmartScreen may show “Windows protected your PC”.\r\n> Click **More info → Run anyway**. You can verify the files with `SHA256SUMS.txt`.\r\n\r\n## What's inside\r\n\r\n- Folder-size snapshots and a **What grew** view (vs yesterday / a week / a month / the first snapshot)\r\n- Folder & large-file browser with weekly change\r\n- Safe cleanup of well-known caches and temporary files\r\n- Daily snapshots via Windows Task Scheduler\r\n- Hard links in the Windows folder are no longer counted twice\r\n- Russian and English interface\r\n\r\n---\r\n\r\nПервый релиз **Enigma Disk** — приложения для Windows, которое показывает, какие папки растут на диске, и помогает безопасно освободить место.\r\nСкачайте **EnigmaDiskSetup.exe** и запустите. Если Windows покажет «Windows защитила ваш компьютер», нажмите **Подробнее → Выполнить в любом случае**.\r\n",
+    "url": "https://github.com/d4rv1n17/Enigma-Disk/releases/tag/v1.1.0",
+    "date": "2026-10-09"
+  }
+]

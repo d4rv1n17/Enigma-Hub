@@ -1,0 +1,14 @@
+build/
+dist/
+Output/
+__pycache__/
+*.pyc
+*.spec
+*.log
+.build-tools/
+assets/hub-core-engine*
+assets/hub-eh-cube.png
+assets/hub-hidden-e*
+assets/hub-logo-directions*
+assets/studio-cover.webp
+assets/news-cover.webp
