@@ -262,6 +262,16 @@ class WorkspaceTests(unittest.TestCase):
             self.assertAlmostEqual(target.width() / target.height(), 2.0)
         cover.deleteLater()
 
+    def test_language_choice_keeps_selection_if_operation_blocks_change(self):
+        self.window.change_language("en")
+        chooser = next(button for button in self.window.findChildren(hub.ChoiceButton) if button.accessibleName() == hub.tr("language"))
+        with patch.object(self.window, "product_busy", return_value=True):
+            chooser.options[1].trigger()
+        self.assertEqual(hub.Hub.lang, "en")
+        self.assertEqual(chooser.text(), "English")
+        self.assertTrue(chooser.options[0].isChecked())
+        self.assertFalse(chooser.options[1].isChecked())
+
     def test_settings_sections_fit_in_all_languages(self):
         self.window.resize(820, 600)
         for language in ("en", "ru", "ro", "de", "es", "fr"):

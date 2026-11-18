@@ -562,10 +562,12 @@ class ChoiceButton(QPushButton):
             if action.isChecked():
                 self.setText(label)
             def select(checked=False, label=label, value=value, action=action):
+                if callback(value) is False:
+                    action.setChecked(not checked)
+                    return
                 for candidate in self.options:
                     candidate.setChecked(candidate is action)
                 self.setText(label)
-                callback(value)
             action.triggered.connect(select)
             self.options.append(action)
         self.setMenu(self.menu_view)
@@ -1831,7 +1833,7 @@ class Hub(QMainWindow):
         if not code or code==Hub.lang:return
         if self.product_busy():
             self.status_message(tr("running"))
-            return
+            return False
         index = min(self.stack.currentIndex(), 4)
         self.stop_page_animation()
         old = self.takeCentralWidget()
