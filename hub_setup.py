@@ -186,15 +186,15 @@ QWidget#setupRoot { background: #141414; }
 QFrame#setupBrand { background: #1C1C1C; border-right: 1px solid #37342B; }
 QLabel#setupTitle { color: #F7F7F7; font-size: 29px; font-weight: 700; }
 QLabel#setupStep { color: #B8B8B8; font-size: 12px; }
-QLabel#setupStage { color: #FFD200; font-size: 12px; font-weight: 700; }
+QLabel#setupStage { color: #F4CC0C; font-size: 12px; font-weight: 700; }
 QLabel#setupFolder { color: #DCDCDC; font-size: 12px; }
 QFrame#setupCard { background: #202020; border: 1px solid #3B3B3B; border-radius: 12px; }
 QCheckBox { color: #DDDDDD; spacing: 10px; padding: 5px 0; font-size: 12px; }
 QCheckBox::indicator { width: 16px; height: 16px; background: #292929; border: 1px solid #626262; border-radius: 4px; }
-QCheckBox::indicator:checked { background: #FFD200; border: 1px solid #FFE373; image: url(assets/setup-check.svg); }
-QCheckBox::indicator:hover { border-color: #FFD200; }
+QCheckBox::indicator:checked { background: #F4CC0C; border: 1px solid #F4CC0C; image: url(assets/setup-check.svg); }
+QCheckBox::indicator:hover { border-color: #F4CC0C; }
 QProgressBar { min-height: 7px; max-height: 7px; background: #353535; }
-QLabel#setupError { color: #FFE16A; background: #302A1B; border: 1px solid #6A5625; border-radius: 8px; padding: 10px; }
+QLabel#setupError { color: #F4CC0C; background: #302A1B; border: 1px solid #6A5625; border-radius: 8px; padding: 10px; }
 """
 
 
@@ -261,7 +261,7 @@ class Setup(QWidget):
         folder_box = QVBoxLayout(folder_card)
         folder_box.setContentsMargins(15, 14, 15, 14)
         folder_header = QHBoxLayout()
-        folder_header.addWidget(Hub.icon_label("folder", "#FFD200", 19))
+        folder_header.addWidget(Hub.icon_label("folder", "#F4CC0C", 19))
         folder_header.addWidget(Hub.copy_label("INSTALL LOCATION", "eyebrow"), 1)
         folder_box.addLayout(folder_header)
         self.path = Hub.copy_label("", "setupFolder")
@@ -295,7 +295,7 @@ class Setup(QWidget):
         self.operation_rows = []
         for text in ("Verify package", "Copy application", "Add shortcuts"):
             row = QHBoxLayout()
-            icon = Hub.icon_label("check", "#FFD200", 18)
+            icon = Hub.icon_label("check", "#F4CC0C", 18)
             label = Hub.copy_label(text, "body")
             self.operation_rows.append((icon, label))
             row.addWidget(icon)
@@ -314,7 +314,7 @@ class Setup(QWidget):
         complete_box = QVBoxLayout(finished)
         complete_box.setContentsMargins(0, 10, 0, 10)
         complete_box.setSpacing(15)
-        complete_box.addWidget(Hub.icon_label("check", "#FFD200", 48), 0, Qt.AlignLeft)
+        complete_box.addWidget(Hub.icon_label("check", "#F4CC0C", 48), 0, Qt.AlignLeft)
         self.complete_path = Hub.copy_label("", "body")
         complete_box.addWidget(self.complete_path)
         complete_box.addStretch()

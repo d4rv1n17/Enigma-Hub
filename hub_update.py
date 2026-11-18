@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 REPOSITORY = "d4rv1n17/Enigma-Hub"
 ASSET_NAME = "EnigmaHubSetup.exe"
 

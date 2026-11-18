@@ -161,7 +161,7 @@ QFrame#railDivider { background: #343434; max-height: 1px; }
 QFrame#topbar { background: #161616; border-bottom: 1px solid #2B2B2B; }
 QStatusBar { background: #131313; color: #D0D0D0; }
 QLabel#brand { color: #F5F5F5; font-size: 19px; font-weight: 700; }
-QLabel#eyebrow { color: #D6BD56; font-size: 11px; font-weight: 600; }
+QLabel#eyebrow { color: #F4CC0C; font-size: 11px; font-weight: 600; }
 QLabel#title { color: #F7F7F7; font-size: 32px; font-weight: 700; }
 QLabel#heroTitle { color: #F7F7F7; font-size: 36px; font-weight: 700; }
 QLabel#subtitle { color: #C3C3C3; font-size: 15px; }
@@ -175,9 +175,9 @@ QPushButton:hover { background: #292929; color: #FFFFFF; }
 QPushButton:pressed { background: #363636; }
 QPushButton:focus { border-color: #A0A0A0; }
 QPushButton#nav { min-height: 19px; }
-QPushButton#navactive { min-height: 19px; background: #353024; border: 1px solid #66582A; color: #FFE16A; font-weight: 650; }
-QPushButton#primary { background: #FFD200; color: #111111; border: 1px solid #FFE36B; padding: 10px 17px; font-weight: 700; text-align: center; }
-QPushButton#primary:hover { background: #FFE04D; }
+QPushButton#navactive { min-height: 19px; background: #353024; border: 1px solid #66582A; color: #F4CC0C; font-weight: 650; }
+QPushButton#primary { background: #F4CC0C; color: #111111; border: 1px solid #F4CC0C; padding: 10px 17px; font-weight: 700; text-align: center; }
+QPushButton#primary:hover { background: #FFDA66; }
 QPushButton#primary:pressed { background: #D7B100; }
 QPushButton#secondary, QPushButton#danger { background: #232323; color: #F0F0F0; border-color: #393939; font-weight: 600; }
 QPushButton#secondary:hover, QPushButton#danger:hover { background: #303030; border-color: #616161; }
@@ -189,7 +189,7 @@ QFrame#card:hover { border-color: #59544A; }
 QFrame#sectionPanel { background: #1B1B1B; border: 1px solid #353535; border-radius: 14px; }
 QPushButton#segment { font-weight: 700; padding: 8px 14px; border-color: #383838; background: #1B1B1B; }
 QPushButton#segment:hover { border-color: #777777; }
-QPushButton#segment:checked { background: #383122; color: #FFE16A; border-color: #786332; }
+QPushButton#segment:checked { background: #383122; color: #F4CC0C; border-color: #786332; }
 QLabel#topTitle { font-size: 15px; font-weight: 650; color: #EAEAEA; }
 QTextBrowser { background: #191919; color: #ECECEC; border: 1px solid #333333; border-radius: 12px; padding: 15px; }
 QDialog { background: #171717; color: #F4F4F4; }
@@ -201,23 +201,23 @@ QLabel#releaseStatus { color: #D0D0D0; font-size: 12px; font-weight: 600; }
 QLabel#dialogTitle { color: #F5F5F5; font-size: 23px; font-weight: 700; }
 QLabel#taskLabel { color: #E9E9E9; padding: 4px 7px; }
 QWidget#taskStrip { background: #232323; border: 1px solid #383838; border-radius: 8px; }
-QFileDialog QAbstractItemView, QFileDialog QTreeView { background: #202020; color: #EFEFEF; selection-background-color: #FFD200; selection-color: #141414; }
+QFileDialog QAbstractItemView, QFileDialog QTreeView { background: #202020; color: #EFEFEF; selection-background-color: #F4CC0C; selection-color: #141414; }
 QFileDialog QHeaderView::section { background: #282828; color: #D0D0D0; border: 0; padding: 6px; }
 QFileDialog QLabel { color: #EEEEEE; }
 QLineEdit { background: #222222; color: #F4F4F4; border: 1px solid #4A4A4A; border-radius: 6px; padding: 8px; }
 QFrame#art { background: #181818; border: 1px solid #363636; border-radius: 10px; }
 QProgressBar { border: 0; background: #292929; height: 6px; border-radius: 3px; text-align: center; }
-QProgressBar::chunk { background: #FFD200; border-radius: 3px; }
+QProgressBar::chunk { background: #F4CC0C; border-radius: 3px; }
 QPushButton#language { padding: 9px 12px; background: #232323; border: 1px solid #393939; color: #EEEEEE; }
 QPushButton#language:hover, QPushButton#language:pressed { border-color: #8A741C; background: #2B281B; }
 QMenu { background: #202020; color: #F3F3F3; border: 1px solid #4A4A4A; padding: 6px; }
 QMenu::item { padding: 9px 27px 9px 29px; border-radius: 6px; }
-QMenu::item:selected { background: #393322; color: #FFD200; }
-QMenu::item:checked { color: #FFD200; }
+QMenu::item:selected { background: #393322; color: #F4CC0C; }
+QMenu::item:checked { color: #F4CC0C; }
 QFrame#newsLead { background: #1E1D19; border: 1px solid #4A4430; border-radius: 14px; }
 QFrame#libraryEntry { background: #1D1D1D; border: 1px solid #3D3D3D; border-radius: 14px; }
 QFrame#libraryEntry:hover { border-color: #57513D; }
-QLabel#libraryCount { background: #292518; border: 1px solid #514522; border-radius: 8px; padding: 6px 9px; color: #FFD200; font-weight: 700; }
+QLabel#libraryCount { background: #292518; border: 1px solid #514522; border-radius: 8px; padding: 6px 9px; color: #F4CC0C; font-weight: 700; }
 QFrame#newsStory { background: #1C1C1C; border: 1px solid #373737; border-radius: 14px; }
 QLabel#newsTitle { color: #F6F6F6; font-size: 24px; font-weight: 700; }
 QScrollArea { border: 0; background: transparent; }
@@ -554,7 +554,7 @@ class StartupIntro(QWidget):
         painter.setPen(QColor("#34332D"))
         for x in range(0, self.width(), 24):
             painter.drawLine(x, 0, x, self.height())
-        painter.fillRect(0, 0, self.width(), 2, QColor("#FFD200"))
+        painter.fillRect(0, 0, self.width(), 2, QColor("#F4CC0C"))
 
         reveal = min(1.0, self.phase * 2.6)
         reveal = 1.0 - (1.0 - reveal) ** 3
@@ -569,7 +569,7 @@ class StartupIntro(QWidget):
         painter.drawText(QRectF(31, 155, 418, 52), Qt.AlignCenter | Qt.TextWordWrap, self.slogan)
         painter.setOpacity(1.0)
         painter.fillRect(32, 230, 416, 2, QColor("#333333"))
-        painter.fillRect(QRectF(32, 230, 416 * self.phase, 2), QColor("#FFD200"))
+        painter.fillRect(QRectF(32, 230, 416 * self.phase, 2), QColor("#F4CC0C"))
 
 
 class Cover(QWidget):
@@ -746,7 +746,7 @@ class Hub(QMainWindow):
         button = QPushButton(objectName="favorite")
         button.setCheckable(True)
         button.setChecked(item["id"] in self.state["favorites"])
-        button.setIcon(ui_icon("star", "#E2C867" if button.isChecked() else "#A3A3A3"))
+        button.setIcon(ui_icon("star", "#F4CC0C" if button.isChecked() else "#A3A3A3"))
         button.setToolTip(self.wc("favorites"))
         button.setAccessibleName(self.wc("favorites") + " · " + item["name"])
         def toggle(checked):
@@ -755,7 +755,7 @@ class Hub(QMainWindow):
                 favorites.append(item["id"])
             elif not checked and item["id"] in favorites:
                 favorites.remove(item["id"])
-            button.setIcon(ui_icon("star", "#E2C867" if checked else "#A3A3A3"))
+            button.setIcon(ui_icon("star", "#F4CC0C" if checked else "#A3A3A3"))
             self.save_state()
             self.refresh_library()
         button.toggled.connect(toggle)
@@ -778,7 +778,7 @@ class Hub(QMainWindow):
         header = QFrame(objectName="dialogHeader")
         heading = QHBoxLayout(header)
         heading.setContentsMargins(14, 13, 14, 13)
-        heading.addWidget(self.icon_label(icon, "#FFD200", 25) if icon else self.asset_image("hub-icon.png", 32))
+        heading.addWidget(self.icon_label(icon, "#F4CC0C", 25) if icon else self.asset_image("hub-icon.png", 32))
         heading.addWidget(self.copy_label(title, "dialogTitle"), 1)
         layout.addWidget(header)
         if message:
@@ -1006,7 +1006,7 @@ class Hub(QMainWindow):
             panel = QFrame(objectName="stat")
             content = QHBoxLayout(panel)
             content.setContentsMargins(14, 12, 14, 12)
-            content.addWidget(self.icon_label(icon, "#DCC574", 22))
+            content.addWidget(self.icon_label(icon, "#F4CC0C", 22))
             copy = QVBoxLayout()
             copy.addWidget(self.copy_label(value, "statValue"))
             copy.addWidget(self.copy_label(title, "muted"))
@@ -1133,7 +1133,7 @@ class Hub(QMainWindow):
         heading.setContentsMargins(18, 16, 18, 16)
         details = QVBoxLayout()
         details.setSpacing(8)
-        details.addWidget(self.icon_label("library", "#FFD200", 25), 0, Qt.AlignLeft)
+        details.addWidget(self.icon_label("library", "#F4CC0C", 25), 0, Qt.AlignLeft)
         self.library_heading = self.copy_label("", "section")
         details.addWidget(self.library_heading)
         counts = QHBoxLayout()
@@ -1213,7 +1213,7 @@ class Hub(QMainWindow):
         if title:
             heading = QHBoxLayout()
             if icon:
-                heading.addWidget(self.icon_label(icon, "#FFD200", 21))
+                heading.addWidget(self.icon_label(icon, "#F4CC0C", 21))
             heading.addWidget(self.copy_label(title, "section"), 1)
             content.addLayout(heading)
         return panel, content
@@ -1360,7 +1360,7 @@ class Hub(QMainWindow):
         for item in reversed(self.state["history"][-50:]):
             card, row = self.section_panel("", None)
             header = QHBoxLayout()
-            header.addWidget(self.icon_label("check" if item["status"] == "success" else "info", "#DCC574"))
+            header.addWidget(self.icon_label("check" if item["status"] == "success" else "info", "#F4CC0C"))
             header.addWidget(self.copy_label(item["name"], "releaseName"), 1)
             row.addLayout(header)
             action = workspace_copy(item["action"], Hub.lang) if item["action"] in ("launch", "install", "update", "remove", "verify") else item["action"]
@@ -1546,7 +1546,7 @@ class Hub(QMainWindow):
         for i, (button, icon) in enumerate(zip(buttons, ("home", "catalog", "library", "news", "settings"))):
             active = i == index or (index >= 5 and i == 1)
             button.setObjectName("navactive" if active else "nav")
-            button.setIcon(ui_icon(icon, "#FFD200" if active else "#BCBCBC"))
+            button.setIcon(ui_icon(icon, "#F4CC0C" if active else "#BCBCBC"))
             button.style().unpolish(button)
             button.style().polish(button)
         if index == 3 and isinstance(self.stack.currentWidget(), QScrollArea):
@@ -1932,7 +1932,7 @@ class Hub(QMainWindow):
             row.setContentsMargins(17, 15, 17, 15)
             row.setSpacing(13)
             product = next((product for product in PRODUCTS if product["name"] == item["name"]), None)
-            thumbnail = self.asset_image(product["id"] + ".png", 52 if featured else 38) if product else self.icon_label("news", "#FFD200", 29)
+            thumbnail = self.asset_image(product["id"] + ".png", 52 if featured else 38) if product else self.icon_label("news", "#F4CC0C", 29)
             row.addWidget(thumbnail, 0, Qt.AlignTop)
             story = QVBoxLayout()
             story.setSpacing(7)
@@ -1956,7 +1956,7 @@ class Hub(QMainWindow):
         dialog.resize(680, 560)
         body = QTextBrowser()
         document = body.document()
-        document.setDefaultStyleSheet("body { color:#DFDFDF; font-size:14px; } h1,h2,h3 { color:#F4DA7D; } a { color:#E8CA69; } td,th { padding:6px; }")
+        document.setDefaultStyleSheet("body { color:#DFDFDF; font-size:14px; } h1,h2,h3 { color:#F4CC0C; } a { color:#F4CC0C; } td,th { padding:6px; }")
         document.setMarkdown(item["body"], QTextDocument.MarkdownNoHTML)
         body.setOpenLinks(False)
         body.anchorClicked.connect(lambda url: webbrowser.open(url.toString()) if url.scheme() in ("https", "http") else None)
@@ -2079,7 +2079,7 @@ class Hub(QMainWindow):
             status_key = "update_available" if update else ("up_to_date" if current else "not_installed_state")
             status = QHBoxLayout()
             icon = "download" if update else ("check" if latest and current else "info")
-            status.addWidget(self.icon_label(icon, "#FFD200" if update else "#BFBFBF", 16))
+            status.addWidget(self.icon_label(icon, "#F4CC0C" if update else "#BFBFBF", 16))
             status.addWidget(self.copy_label(tr(status_key) if latest else failed_label, "eyebrow" if update else "releaseStatus"), 1)
             card_layout.addLayout(status)
             content.addWidget(card)
