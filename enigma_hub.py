@@ -27,7 +27,7 @@ from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtWidgets import (
     QApplication, QBoxLayout, QDialog, QFileDialog, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QPushButton, QProgressBar, QTextBrowser,
-    QScrollArea, QStackedWidget, QVBoxLayout, QWidget, QSizePolicy, QComboBox, QShortcut,
+    QScrollArea, QStackedWidget, QVBoxLayout, QWidget, QSizePolicy, QComboBox, QShortcut, QAbstractButton,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -548,7 +548,7 @@ class Glyph(QWidget):
 
 class ChoiceButton(QPushButton):
     """Keyboard-accessible choice menu with a consistent vector chevron."""
-    def __init__(self, choices, callback):
+    def __init__(self, choices, callback, selected=None):
         super().__init__(choices[0][0])
         self.setObjectName("choice")
         self.setCursor(Qt.PointingHandCursor)
@@ -558,7 +558,9 @@ class ChoiceButton(QPushButton):
         for index, (label, value) in enumerate(choices):
             action = self.menu_view.addAction(label)
             action.setCheckable(True)
-            action.setChecked(index == 0)
+            action.setChecked(value == selected if selected is not None else index == 0)
+            if action.isChecked():
+                self.setText(label)
             def select(checked=False, label=label, value=value, action=action):
                 for candidate in self.options:
                     candidate.setChecked(candidate is action)
@@ -576,6 +578,49 @@ class ChoiceButton(QPushButton):
         x, y = self.width() - 21, self.height() // 2
         painter.drawLine(x-4, y-2, x, y+2)
         painter.drawLine(x, y+2, x+4, y-2)
+
+
+class SettingSwitch(QAbstractButton):
+    def __init__(self, checked, label):
+        super().__init__()
+        self.setCheckable(True)
+        self.setChecked(checked)
+        self.setAccessibleName(label)
+        self.setFixedSize(46, 26)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setCursor(Qt.PointingHandCursor)
+        self.position = float(checked)
+        self.animation = QVariantAnimation(self)
+        self.animation.setDuration(140)
+        self.animation.setEasingCurve(QEasingCurve.OutCubic)
+        self.animation.valueChanged.connect(self.advance)
+        self.toggled.connect(self.animate)
+
+    def advance(self, value):
+        self.position = float(value)
+        self.update()
+
+    def animate(self, checked):
+        self.animation.stop()
+        if not getattr(self.window(), "state", {}).get("motion", True):
+            self.advance(float(checked))
+            return
+        self.animation.setStartValue(self.position)
+        self.animation.setEndValue(float(checked))
+        self.animation.start()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#F4CC0C" if self.isChecked() else "#44433E"))
+        painter.drawRoundedRect(QRectF(1, 2, 44, 22), 11, 11)
+        painter.setBrush(QColor("#171717" if self.isChecked() else "#DEDDD7"))
+        painter.drawEllipse(QRectF(4 + 20 * self.position, 5, 16, 16))
+        if self.hasFocus():
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QColor("#F0E5B4"))
+            painter.drawRoundedRect(QRectF(.5, .5, 45, 25), 12, 12)
 
 
 def configure_display():
@@ -751,9 +796,11 @@ class Cover(QWidget):
         painter.setClipPath(clip)
         painter.fillRect(bounds, QColor("#242424"))
         if self.vector:
-            scale = 1 + 0.085 * self.zoom
-            target = bounds.adjusted(-bounds.width() * (scale-1)/2, -bounds.height() * (scale-1)/2, bounds.width() * (scale-1)/2, bounds.height() * (scale-1)/2)
-            self.vector.setAspectRatioMode(Qt.KeepAspectRatioByExpanding)
+            size = self.vector.defaultSize()
+            scale = max(bounds.width() / max(1, size.width()), bounds.height() / max(1, size.height())) * (1 + 0.085 * self.zoom)
+            width, height = size.width() * scale, size.height() * scale
+            target = QRectF(bounds.center().x() - width / 2, bounds.center().y() - height / 2, width, height)
+            self.vector.setAspectRatioMode(Qt.IgnoreAspectRatio)
             self.vector.render(painter, target)
         elif not self.art.isNull():
             scale = max(bounds.width() / self.art.width(), bounds.height() / self.art.height())
@@ -996,9 +1043,9 @@ class Hub(QMainWindow):
 
     def build_shell(self):
         root = QWidget(objectName="root"); shell = QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); shell.setSpacing(0)
-        side = QFrame(objectName="sidebar"); side.setFixedWidth(190); sl = QVBoxLayout(side); sl.setContentsMargins(14,26,14,18); sl.setSpacing(8)
+        side = QFrame(objectName="sidebar"); side.setFixedWidth(208); sl = QVBoxLayout(side); sl.setContentsMargins(14,26,14,18); sl.setSpacing(6)
         brand_row = QHBoxLayout()
-        brand = self.asset_image("hub-fold-koulen.png", 162)
+        brand = self.asset_image("hub-fold-koulen.png", 176)
         brand.setAccessibleName("Enigma Hub")
         brand_row.addWidget(brand)
         brand_row.addStretch()
@@ -1008,23 +1055,24 @@ class Hub(QMainWindow):
         sl.addSpacing(10)
         sl.addWidget(self.copy_label(self.wc("workspace"), "eyebrow"))
         self.nav_buttons=[]; self.stack=QStackedWidget()
+        self.stack.setFocusPolicy(Qt.StrongFocus)
         for index, key in enumerate(("overview", "catalog", "library", "news")):
             button = QPushButton(tr(key))
-            button.setIconSize(QSize(20, 20))
-            button.setMinimumHeight(44)
-            button.setCursor(Qt.PointingHandCursor)
+            self.style_rail_button(button)
             button.clicked.connect(lambda checked=False, page=index: self.navigate(page))
             sl.addWidget(button)
             self.nav_buttons.append(button)
         sl.addStretch()
         activity = QPushButton(self.wc("activity"))
-        activity.setObjectName("railUtility")
-        activity.setIconSize(QSize(20, 20))
+        activity.setObjectName("nav")
+        self.nav_activity = activity
+        self.style_rail_button(activity)
         activity.setIcon(ui_icon("activity"))
         activity.clicked.connect(self.show_activity)
         sl.addWidget(activity)
-        sl.addWidget(self.copy_label("ENIGMA HUB  /  " + HUB_VERSION, "muted"))
+        sl.addWidget(self.copy_label("ENIGMA HUB  /  " + HUB_VERSION, "railVersion"))
         sl.addWidget(QFrame(objectName="railDivider")); self.nav_settings=QPushButton(tr("settings")); self.nav_settings.clicked.connect(lambda:self.navigate(4)); sl.addWidget(self.nav_settings)
+        self.style_rail_button(self.nav_settings)
         shell.addWidget(side)
         right=QVBoxLayout(); right.setContentsMargins(0,0,0,0); right.setSpacing(0)
         top=QFrame(objectName="topbar"); tl=QHBoxLayout(top); tl.setContentsMargins(28,13,28,13); self.top_title = QLabel(objectName="topTitle"); tl.addWidget(self.top_title); tl.addStretch()
@@ -1042,6 +1090,13 @@ class Hub(QMainWindow):
         language.setMenu(menu)
         tl.addWidget(language)
         right.addWidget(top); right.addWidget(self.stack,1); self.workspace_layout = right; shell.addLayout(right,1); self.setCentralWidget(root)
+
+    @staticmethod
+    def style_rail_button(button):
+        button.setFixedHeight(46)
+        button.setIconSize(QSize(20, 20))
+        button.setCursor(Qt.PointingHandCursor)
+        button.setFocusPolicy(Qt.TabFocus)
 
     def adaptive_row(self, breakpoint, parent=None):
         row = QBoxLayout(QBoxLayout.LeftToRight, parent)
@@ -1306,6 +1361,8 @@ class Hub(QMainWindow):
         for option, values in (("filter", ("all", "favorites", "apps", "games")), ("sort", ("recent", "name"))):
             choices = [(tr(value) if value in ("apps", "games") else self.wc(value), value) for value in values]
             combo = ChoiceButton(choices, lambda value, key=option: self.set_library_option(key, value))
+            if option == "filter":
+                self.library_filter_menu = combo
             combo.setAccessibleName(self.wc("favorites") if option == "filter" else self.wc("recent"))
             tools.addWidget(combo, 1)
         box.addLayout(tools)
@@ -1366,97 +1423,129 @@ class Hub(QMainWindow):
         return panel, content
 
     def page_settings(self):
-        page, box = self.page_base(tr("settings"), tr("preferences"), "")
-        folders, folder_content = self.section_panel(tr("choose_folder"), "folder")
+        page, box = self.page_base(tr("settings"), tr("settings"), self.wc("settings_intro"))
+        tabs = QHBoxLayout()
+        tabs.setSpacing(7)
+        self.settings_tabs = []
+        self.settings_sections = []
+        for index, title in enumerate((self.wc("general"), tr("installation"), tr("updates"), tr("support"))):
+            button = QPushButton(title, objectName="settingsTab")
+            button.setCheckable(True)
+            button.setCursor(Qt.PointingHandCursor)
+            button.clicked.connect(lambda checked=False, i=index: self.select_settings_section(i))
+            self.settings_tabs.append(button)
+            tabs.addWidget(button)
+        box.addLayout(tabs)
+        for _ in range(4):
+            section = QWidget()
+            content = QVBoxLayout(section)
+            content.setContentsMargins(0, 8, 0, 0)
+            content.setSpacing(14)
+            self.settings_sections.append(section)
+            box.addWidget(section)
+        general = self.settings_sections[0].layout()
+        panel, content = self.section_panel(tr("preferences"), "motion")
+        def add_toggle(layout, title, note, key):
+            frame = QFrame(objectName="settingRow")
+            row = QHBoxLayout(frame)
+            row.setContentsMargins(0, 12, 0, 12)
+            row.setSpacing(22)
+            copy = QVBoxLayout()
+            copy.setSpacing(5)
+            copy.addWidget(self.copy_label(title, "settingTitle"))
+            copy.addWidget(self.copy_label(note, "body"))
+            row.addLayout(copy, 1)
+            toggle = SettingSwitch(self.state.get(key, True), title)
+            def changed(enabled):
+                self.state[key] = enabled
+                if key == "motion" and not enabled:
+                    self.stop_page_animation()
+                    for cover in self.findChildren(Cover):
+                        cover.motion.stop()
+                        cover.on_motion(0.0)
+                self.save_state()
+                if key == "hub_auto_update" and enabled:
+                    self.check_hub_update()
+            toggle.toggled.connect(changed)
+            row.addWidget(toggle, 0, Qt.AlignVCenter)
+            layout.addWidget(frame)
+            return toggle
+        add_toggle(content, MOTION_LABELS[Hub.lang], self.wc("motion_note"), "motion")
+        add_toggle(content, self.wc("intro_toggle"), self.wc("intro_note"), "intro")
+        general.addWidget(panel)
+        language, language_content = self.section_panel(tr("language"), "language")
+        language_content.addWidget(self.copy_label(tr("language_note"), "body"))
+        languages = [("English", "en"), ("Русский", "ru"), ("Română", "ro"), ("Deutsch", "de"), ("Español", "es"), ("Français", "fr")]
+        chooser = ChoiceButton(languages, self.change_language, selected=Hub.lang)
+        chooser.setAccessibleName(tr("language"))
+        language_content.addWidget(chooser)
+        general.addWidget(language)
+
+        installations = self.settings_sections[1].layout()
         for product in PRODUCTS:
-            row = self.adaptive_row(1040)
-            labels = QVBoxLayout()
-            labels.addWidget(self.copy_label(product["name"], "productTitle"))
+            panel, content = self.section_panel("", None)
+            heading = QHBoxLayout()
+            heading.addWidget(self.asset_image(product["id"] + ".png", 36))
+            heading.addWidget(self.copy_label(product["name"], "section"), 1)
+            content.addLayout(heading)
             path = self.path_label(self.state["paths"][product["id"]])
             self.path_labels.setdefault(product["id"], []).append(path)
-            labels.addWidget(path)
-            row.addLayout(labels, 1)
-            choose = QPushButton(tr("choose"), objectName="secondary")
-            choose.setIcon(ui_icon("folder"))
-            choose.clicked.connect(lambda checked=False, item=product: self.choose_install_folder(item))
-            row.addWidget(choose)
-            folder_content.addLayout(row)
-        box.addWidget(folders)
+            content.addWidget(path)
+            actions = self.adaptive_row(1040)
+            for title, icon, callback in ((tr("choose"), "folder", lambda checked=False, p=product: self.choose_install_folder(p)), (self.wc("locate"), "search", lambda checked=False, p=product: self.locate_product(p))):
+                action = QPushButton(title, objectName="secondary")
+                action.setIcon(ui_icon(icon))
+                action.clicked.connect(callback)
+                actions.addWidget(action)
+            content.addLayout(actions)
+            content.addWidget(self.copy_label(tr("folder_installed"), "muted"))
+            installations.addWidget(panel)
 
-        preferences, preference_content = self.section_panel(tr("preferences"), "motion")
-        motion = QPushButton(MOTION_LABELS[Hub.lang], objectName="segment")
-        motion.setCheckable(True)
-        motion.setChecked(self.state.get("motion", True))
-        def save_motion(enabled):
-            self.state["motion"] = enabled
-            if not enabled:
-                self.stop_page_animation()
-                for cover in self.findChildren(Cover):
-                    cover.motion.stop()
-                    cover.on_motion(0.0)
-            self.save_state()
-        motion.toggled.connect(save_motion)
-        preference_content.addWidget(motion, 0, Qt.AlignLeft)
-        intro = QPushButton(self.wc("intro_toggle"), objectName="segment")
-        intro.setCheckable(True)
-        intro.setChecked(self.state["intro"])
-        def set_intro(enabled):
-            self.state["intro"] = enabled
-            self.save_state()
-        intro.toggled.connect(set_intro)
-        preference_content.addWidget(intro, 0, Qt.AlignLeft)
-        box.addWidget(preferences)
-
-        updates, update_content = self.section_panel(tr("updates"), "updates")
-        self.auto_check_button = QPushButton(objectName="segment")
-        self.auto_check_button.setCheckable(True)
-        self.auto_check_button.setChecked(self.state.get("auto_check", True))
-        self.auto_check_button.setText(tr("auto_check"))
-        self.auto_check_button.clicked.connect(self.toggle_auto_check)
-        update_content.addWidget(self.auto_check_button, 0, Qt.AlignLeft)
-        check = QPushButton(tr("check_updates"), objectName="secondary")
-        check.setIcon(ui_icon("updates"))
+        updates = self.settings_sections[2].layout()
+        panel, content = self.section_panel(tr("updates"), "updates")
+        self.auto_check_button = add_toggle(content, tr("auto_check"), self.wc("product_updates_note"), "auto_check")
+        add_toggle(content, "Enigma Hub", self.wc("hub_updates_note"), "hub_auto_update")
+        check = QPushButton(tr("check_updates"), objectName="primary")
+        check.setIcon(ui_icon("updates", "#171717"))
         check.clicked.connect(self.check_updates)
-        update_content.addWidget(check, 0, Qt.AlignLeft)
-        hub_auto = QPushButton("Enigma Hub · " + tr("auto_check"), objectName="segment")
-        hub_auto.setCheckable(True)
-        hub_auto.setChecked(self.state.get("hub_auto_update", True))
-        hub_auto.setIcon(ui_icon("download"))
-        def set_hub_auto(enabled):
-            self.state["hub_auto_update"] = enabled
-            self.save_state()
-            if enabled:
-                self.check_hub_update()
-        hub_auto.toggled.connect(set_hub_auto)
-        update_content.addWidget(hub_auto, 0, Qt.AlignLeft)
-        update_content.addWidget(self.copy_label("Enigma Hub " + HUB_VERSION, "muted"))
-        box.addWidget(updates)
+        content.addWidget(check, 0, Qt.AlignLeft)
+        content.addWidget(self.copy_label("Enigma Hub " + HUB_VERSION, "muted"))
+        updates.addWidget(panel)
 
-        support, support_content = self.section_panel(tr("support"), "support")
-        support_content.addWidget(self.copy_label(tr("support_desc"), "body"))
+        support = self.settings_sections[3].layout()
+        panel, content = self.section_panel(tr("support"), "support")
+        content.addWidget(self.copy_label(tr("support_desc"), "body"))
         actions = self.adaptive_row(1050)
-        for label, url in (
-            (tr("support_email"), "https://github.com/d4rv1n17/Enigma-Hub/issues/new"),
-            (tr("open_site"), "https://enigmastudioo.com"),
-        ):
-            button = QPushButton(label, objectName="secondary")
-            button.clicked.connect(lambda checked=False, link=url: webbrowser.open(link))
-            actions.addWidget(button)
-        support_content.addLayout(actions)
+        for title, icon, url in ((tr("support_email"), "support", "https://github.com/d4rv1n17/Enigma-Hub/issues/new"), (tr("open_site"), "external", "https://enigmastudioo.com")):
+            action = QPushButton(title, objectName="secondary")
+            action.setIcon(ui_icon(icon))
+            action.clicked.connect(lambda checked=False, link=url: webbrowser.open(link))
+            actions.addWidget(action)
+        content.addLayout(actions)
         diagnostics = QPushButton(self.wc("diagnostics"), objectName="secondary")
         diagnostics.setIcon(ui_icon("shield"))
         diagnostics.clicked.connect(self.export_diagnostics)
-        support_content.addWidget(diagnostics, 0, Qt.AlignLeft)
-        support_content.addWidget(self.copy_label(self.wc("diagnostics_note"), "muted"))
-        box.addWidget(support)
-        storage, storage_content = self.section_panel(self.wc("cache"), "folder")
-        storage_content.addWidget(self.copy_label(self.wc("cache_note"), "body"))
+        content.addWidget(diagnostics, 0, Qt.AlignLeft)
+        content.addWidget(self.copy_label(self.wc("diagnostics_note"), "muted"))
+        support.addWidget(panel)
+        panel, content = self.section_panel(self.wc("cache"), "folder")
+        content.addWidget(self.copy_label(self.wc("cache_note"), "body"))
         clear = QPushButton(self.wc("cache"), objectName="secondary")
         clear.clicked.connect(self.clear_downloads)
-        storage_content.addWidget(clear, 0, Qt.AlignLeft)
-        box.addWidget(storage)
+        content.addWidget(clear, 0, Qt.AlignLeft)
+        support.addWidget(panel)
+        panel, content = self.section_panel(tr("about"), "info")
+        content.addWidget(self.copy_label("Enigma Hub " + HUB_VERSION, "releaseName"))
+        content.addWidget(self.copy_label("Enigma Studio · Windows 10 / 11", "body"))
+        support.addWidget(panel)
         box.addStretch()
+        self.select_settings_section(0)
         return self.scroll(page)
+
+    def select_settings_section(self, index):
+        for i, (button, section) in enumerate(zip(self.settings_tabs, self.settings_sections)):
+            button.setChecked(i == index)
+            section.setVisible(i == index)
 
     def clear_downloads(self):
         if self.product_busy():
@@ -1719,6 +1808,7 @@ class Hub(QMainWindow):
         if animate and self.state.get("motion", True) and previous and previous.isVisible() and index != self.stack.currentIndex():
             outgoing = self.stack.grab()
         self.stack.setCurrentIndex(index)
+        self.stack.setFocus(Qt.OtherFocusReason)
         sections = ("overview", "catalog", "library", "news", "settings")
         self.top_title.setText(tr(sections[index if index < len(sections) else 1]))
         buttons = self.nav_buttons + [self.nav_settings]
@@ -2343,6 +2433,9 @@ def main():
     configure_display()
     app = QApplication(sys.argv)
     app.setApplicationName("Enigma Hub")
+    app.setApplicationDisplayName("Enigma Hub")
+    if sys.platform == "win32":
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EnigmaStudio.EnigmaHub")
     app.setOrganizationName("Enigma Studio")
     app.setStyle("Fusion")
     app.setFont(QFont("Segoe UI", 10))

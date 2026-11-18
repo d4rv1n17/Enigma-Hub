@@ -1,5 +1,11 @@
 """Shared visual tokens and localized workspace controls."""
 COPY = {
+    "general": ("General", "Общие", "Generale", "Allgemein", "General", "Général"),
+    "settings_intro": ("Your workspace, your preferences.", "Твоё пространство — твои настройки.", "Spațiul tău, preferințele tale.", "Dein Bereich, deine Einstellungen.", "Tu espacio, tus preferencias.", "Votre espace, vos préférences."),
+    "motion_note": ("Smooth page transitions and artwork hover effects.", "Плавные переходы между страницами и эффекты иллюстраций.", "Tranziții line și efecte pentru ilustrații.", "Sanfte Seitenwechsel und Effekte für Grafiken.", "Transiciones suaves y efectos en ilustraciones.", "Transitions fluides et effets des illustrations."),
+    "intro_note": ("Show the Enigma welcome screen when Hub starts.", "Показывать приветствие Enigma при запуске хаба.", "Afișează ecranul Enigma la pornire.", "Enigma-Begrüßung beim Start anzeigen.", "Mostrar la bienvenida de Enigma al iniciar.", "Afficher l’accueil Enigma au démarrage."),
+    "product_updates_note": ("Check Cube and Disk releases when you open Hub.", "Проверять выпуски Cube и Disk при открытии хаба.", "Verifică versiunile Cube și Disk la pornire.", "Cube- und Disk-Versionen beim Start prüfen.", "Buscar versiones de Cube y Disk al abrir Hub.", "Vérifier les versions Cube et Disk au démarrage."),
+    "hub_updates_note": ("Download verified Hub updates in the background. You choose when to restart.", "Скачивать проверенные обновления Hub в фоне. Когда перезапустить — решаешь ты.", "Descarcă actualizările verificate în fundal. Alegi când repornești.", "Geprüfte Hub-Updates im Hintergrund laden. Du bestimmst den Neustart.", "Descargar actualizaciones verificadas en segundo plano. Tú decides cuándo reiniciar.", "Télécharger les mises à jour vérifiées en arrière-plan. Vous choisissez le redémarrage."),
     "continue": ("Jump back in", "Продолжить работу", "Continuă de unde ai rămas", "Direkt weitermachen", "Continúa donde estabas", "Reprenez votre activité"),
     "preparing": ("Preparing download…", "Подготовка загрузки…", "Se pregătește descărcarea…", "Download wird vorbereitet…", "Preparando descarga…", "Préparation du téléchargement…"),
     "cancelling": ("Cancelling download…", "Отмена загрузки…", "Se anulează descărcarea…", "Download wird abgebrochen…", "Cancelando descarga…", "Annulation du téléchargement…"),
@@ -42,13 +48,19 @@ def copy(key, language):
     return COPY[key][("en", "ru", "ro", "de", "es", "fr").index(language)]
 
 PREMIUM_STYLE = """
+QLabel#railVersion { color: #89877F; font-size: 10px; padding: 5px 14px; }
+QLabel#settingTitle { color: #F0EEE7; font-size: 15px; font-weight: 600; }
+QFrame#settingRow { border-bottom: 1px solid #33322C; }
+QPushButton#settingsTab { color: #B1AFA7; background: #1A1A18; border: 1px solid #36352F; border-radius: 8px; padding: 10px 12px; text-align: center; }
+QPushButton#settingsTab:hover { background: #26251F; color: #F0EEE7; }
+QPushButton#settingsTab:checked { background: #2C2818; color: #F4CC0C; border-color: #6D5C20; }
 QFrame#transferPanel { background: #1C1B18; border-top: 1px solid #5B4D22; }
 QFrame#sidebar { background: #151515; border-right: 1px solid #292929; }
 QFrame#topbar { background: #121212; border-bottom: 1px solid #292929; }
-QPushButton#nav { padding: 10px 14px; font-size: 14px; color: #BDBDBD; border: 1px solid transparent; border-radius: 9px; text-align: left; }
+QPushButton#nav { min-height: 24px; max-height: 24px; padding: 10px 14px; font-size: 14px; color: #BDBDBD; border: 1px solid transparent; border-radius: 9px; text-align: left; }
 QPushButton#nav:hover { background: #202020; border-color: #303030; }
 QPushButton#nav:focus { border-color: #70633A; }
-QPushButton#navactive { padding: 10px 14px 10px 12px; font-size: 14px; background: #292619; border: 1px solid #5C4D19; border-left: 3px solid #F4CC0C; border-radius: 9px; color: #F4CC0C; text-align: left; }
+QPushButton#navactive { min-height: 24px; max-height: 24px; padding: 10px 14px 10px 12px; font-size: 14px; background: #292619; border: 1px solid #5C4D19; border-left: 3px solid #F4CC0C; border-radius: 9px; color: #F4CC0C; text-align: left; }
 QPushButton#navactive:hover { background: #302B19; }
 QPushButton#railUtility { padding: 12px 14px; color: #AAA79F; }
 QPushButton#railUtility:hover { background: #202020; color: #F4CC0C; }

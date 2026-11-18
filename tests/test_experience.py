@@ -15,6 +15,7 @@ import enigma_hub as hub
 if QApplication.instance() is None:
     hub.configure_display()
 APP = QApplication.instance() or QApplication([])
+APP.setQuitOnLastWindowClosed(False)
 APP.setStyle("Fusion")
 
 
@@ -61,8 +62,7 @@ class WorkspaceTests(unittest.TestCase):
         image.deleteLater()
 
     def test_library_choice_menu_changes_filter_and_selection(self):
-        choices = self.window.findChildren(hub.ChoiceButton)
-        selector = choices[0]
+        selector = self.window.library_filter_menu
         selector.options[1].trigger()
         self.assertEqual(self.window.library_filter, "favorites")
         self.assertTrue(selector.options[1].isChecked())
@@ -226,6 +226,51 @@ class WorkspaceTests(unittest.TestCase):
             self.window.task_done(hub.PRODUCTS[1], "cancelled", "", "", str(self.directory))
             notify.assert_not_called()
             self.assertEqual(self.window.state["history"][-1]["status"], "cancelled")
+
+    def test_settings_tabs_and_switches_save_preferences(self):
+        self.window.navigate(4, False)
+        self.window.select_settings_section(2)
+        APP.processEvents()
+        self.assertTrue(self.window.settings_sections[2].isVisible())
+        self.assertTrue(self.window.settings_tabs[2].isChecked())
+        self.assertTrue(self.window.settings_sections[0].isHidden())
+        previous = self.window.state["auto_check"]
+        self.window.auto_check_button.click()
+        self.assertEqual(self.window.state["auto_check"], not previous)
+        saved = json.loads(hub.STATE_FILE.read_text())
+        self.assertEqual(saved["auto_check"], not previous)
+
+    def test_sidebar_controls_share_geometry_and_icon_size(self):
+        controls = self.window.nav_buttons + [self.window.nav_activity, self.window.nav_settings]
+        APP.processEvents()
+        self.assertEqual({button.height() for button in controls}, {46})
+        self.assertEqual(len({button.width() for button in controls}), 1)
+        self.assertEqual({button.iconSize().width() for button in controls}, {20})
+
+    def test_banner_vector_keeps_source_aspect_ratio(self):
+        cover = hub.Cover("hub-universe.svg", 180)
+        for width in (280, 600):
+            cover.resize(width, 180)
+            rectangles = []
+            render = cover.vector.render
+            def record(painter, target):
+                rectangles.append(hub.QRectF(target))
+                render(painter, target)
+            with patch.object(cover.vector, "render", new=record):
+                cover.grab()
+            target = rectangles[-1]
+            self.assertAlmostEqual(target.width() / target.height(), 2.0)
+        cover.deleteLater()
+
+    def test_settings_sections_fit_in_all_languages(self):
+        self.window.resize(820, 600)
+        for language in ("en", "ru", "ro", "de", "es", "fr"):
+            self.window.change_language(language)
+            self.window.navigate(4, False)
+            for index in range(4):
+                self.window.select_settings_section(index)
+                APP.processEvents()
+                self.assertLessEqual(self.window.stack.currentWidget().horizontalScrollBar().maximum(), 1, (language, index))
 
 
 if __name__ == "__main__":

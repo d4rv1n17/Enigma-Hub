@@ -15,11 +15,23 @@ payload = root / "build/payload"
 payload.mkdir(parents=True, exist_ok=True)
 
 def bundle(name, entry, destination, extra=()):
+    display_name = "Enigma Hub" if name == "EnigmaHub" else "Enigma Hub Setup"
+    version = tuple(map(int, VERSION.split("."))) + (0,)
+    strings = {"CompanyName": "Enigma Studio", "FileDescription": display_name,
+               "FileVersion": VERSION, "ProductName": "Enigma Hub", "ProductVersion": VERSION,
+               "InternalName": name, "OriginalFilename": name + ".exe"}
+    fields = ",".join(f"StringStruct({key!r}, {value!r})" for key, value in strings.items())
+    version_file = root / "build" / (name + "-version.txt")
+    version_file.write_text(
+        f"VSVersionInfo(ffi=FixedFileInfo(filevers={version!r}, prodvers={version!r}, mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0,0)), kids=[StringFileInfo([StringTable('040904B0', [{fields}])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])])",
+        encoding="utf-8",
+    )
     subprocess.run([
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed",
         "--name", name, "--distpath", str(destination),
         "--icon", "assets/hub-icon.ico", "--add-data", "assets;assets",
         "--manifest", "assets/windows.manifest",
+        "--version-file", str(version_file),
         *extra, entry,
     ], cwd=root, check=True)
 
