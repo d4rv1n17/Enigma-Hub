@@ -1,5 +1,11 @@
 """Shared visual tokens and localized workspace controls."""
 COPY = {
+    "continue": ("Jump back in", "Продолжить работу", "Continuă de unde ai rămas", "Direkt weitermachen", "Continúa donde estabas", "Reprenez votre activité"),
+    "preparing": ("Preparing download…", "Подготовка загрузки…", "Se pregătește descărcarea…", "Download wird vorbereitet…", "Preparando descarga…", "Préparation du téléchargement…"),
+    "cancelling": ("Cancelling download…", "Отмена загрузки…", "Se anulează descărcarea…", "Download wird abgebrochen…", "Cancelando descarga…", "Annulation du téléchargement…"),
+    "cancelled": ("Cancelled", "Отменено", "Anulat", "Abgebrochen", "Cancelado", "Annulé"),
+    "remaining": ("Remaining", "Осталось", "Rămas", "Verbleibend", "Restante", "Restant"),
+    "disk_space": ("Not enough free disk space for this download or installation.", "Недостаточно свободного места для загрузки или установки.", "Spațiu insuficient pentru descărcare sau instalare.", "Nicht genügend Speicherplatz für Download oder Installation.", "No hay espacio suficiente para descargar o instalar.", "Espace insuffisant pour le téléchargement ou l’installation."),
     "verify_note": ("Checks the main executable against the reference saved after installation through Hub. Other application files are not scanned.", "Сравнивает основной EXE с образцом, сохранённым после установки через Hub. Другие файлы приложения не сканируются.", "Compară executabilul cu referința salvată după instalarea prin Hub. Alte fișiere nu sunt scanate.", "Prüft die Programmdatei anhand der über Hub installierten Referenz. Andere Dateien werden nicht geprüft.", "Compara el ejecutable con la referencia instalada mediante Hub. No analiza otros archivos.", "Compare l’exécutable à la référence installée via Hub. Les autres fichiers ne sont pas analysés."),
     "connect": ("Build your library", "Собери свою библиотеку", "Creează-ți biblioteca", "Deine Bibliothek aufbauen", "Crea tu biblioteca", "Créez votre bibliothèque"),
     "search": ("Search your universe…", "Поиск в твоей вселенной…", "Caută în universul tău…", "Dein Universum durchsuchen…", "Busca en tu universo…", "Rechercher dans votre univers…"),
@@ -36,6 +42,7 @@ def copy(key, language):
     return COPY[key][("en", "ru", "ro", "de", "es", "fr").index(language)]
 
 PREMIUM_STYLE = """
+QFrame#transferPanel { background: #1C1B18; border-top: 1px solid #5B4D22; }
 QFrame#sidebar { background: #151515; border-right: 1px solid #292929; }
 QFrame#topbar { background: #121212; border-bottom: 1px solid #292929; }
 QPushButton#nav { padding: 10px 14px; font-size: 14px; color: #BDBDBD; border: 1px solid transparent; border-radius: 9px; text-align: left; }

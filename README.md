@@ -24,6 +24,9 @@ Download **EnigmaHubSetup.exe** from [Releases](https://github.com/d4rv1n17/Enig
 - Switch languages immediately, choose whether to show the startup intro, and navigate with Ctrl+1–5 / Ctrl+K.
 - Opening Hub again activates the existing window instead of starting another instance.
 - Per-monitor HiDPI awareness, fractional scaling and vector-rendered navigation icons, logos and decorative artwork.
+- A persistent transfer panel shows downloaded bytes, average speed and estimated download time. Downloads can be cancelled before installation starts; incomplete files are removed.
+- Preflight free-space checks before product downloads and installation.
+- Home offers quick launch for the three most recently used products that are still installed.
 
 ## Development
 

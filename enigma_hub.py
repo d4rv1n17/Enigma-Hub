@@ -231,14 +231,37 @@ def tr(key):
     return TEXT.get(Hub.lang, TEXT["en"]).get(key, TEXT["en"].get(key, key))
 
 
+def format_bytes(value):
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1000 or unit == "GB":
+            return f"{value:.1f} {unit}"
+        value /= 1000
+
+
+def available_space(path):
+    path = Path(path)
+    while not path.exists():
+        parent = path.parent
+        if parent == path:
+            raise OSError("The selected drive is unavailable.")
+        path = parent
+    return shutil.disk_usage(path).free
+
+
+class DownloadCancelled(Exception):
+    pass
+
+
 class ProductWorker(QThread):
     progress = pyqtSignal(int, str)
+    transfer = pyqtSignal(int, int, float, int)
     done = pyqtSignal(str, str, str, str)
 
     def __init__(self, product, action, install_dir, expected_hash=None):
         super().__init__()
         self.product, self.action, self.install_dir = product, action, Path(install_dir)
         self.expected_hash = expected_hash
+        self.cancellable = action in ("install", "update")
 
     def run(self):
         temporary = None
@@ -255,6 +278,8 @@ class ProductWorker(QThread):
                 self.done.emit("verify", "", "", str(self.install_dir))
                 return
             if self.action in ("install", "update"):
+                if self.isInterruptionRequested():
+                    raise DownloadCancelled()
                 self.progress.emit(5, tr("progress_download"))
                 repo = self.product["repo"]
                 req = Request(f"https://api.github.com/repos/{repo}/releases/latest", headers={"User-Agent": "EnigmaHub/1.0", "Accept": "application/vnd.github+json"})
@@ -278,20 +303,37 @@ class ProductWorker(QThread):
                 downloads = APPDATA / "downloads"
                 reject_reparse(downloads)
                 downloads.mkdir(parents=True, exist_ok=True)
+                if available_space(downloads) < size + 16 * 1024 * 1024 or available_space(self.install_dir) < size * 2 + 16 * 1024 * 1024:
+                    raise ValueError(workspace_copy("disk_space", Hub.lang))
                 target = downloads / wanted
                 temporary = target.with_suffix(".part")
                 reject_reparse(target)
                 reject_reparse(temporary)
                 h, received = hashlib.sha256(), 0
+                started = time.monotonic()
+                last_report = 0.0
+                if self.isInterruptionRequested():
+                    raise DownloadCancelled()
                 with urlopen(Request(url, headers={"User-Agent": "EnigmaHub/" + HUB_VERSION}), timeout=35) as response, temporary.open("wb") as out:
                     while True:
+                        if self.isInterruptionRequested():
+                            raise DownloadCancelled()
                         block = response.read(1024 * 128)
                         if not block:
                             break
                         out.write(block); h.update(block); received += len(block)
                         if received > size:
                             raise ValueError("Downloaded file exceeds release size")
-                        self.progress.emit(min(75, 5 + int(received * 70 / size)), tr("progress_download"))
+                        now = time.monotonic()
+                        if now - last_report >= 0.1 or received == size:
+                            speed = received / max(0.001, now - started)
+                            remaining = max(0, int((size - received) / speed))
+                            self.transfer.emit(received, size, speed, remaining)
+                            self.progress.emit(min(75, 5 + int(received * 70 / size)), tr("progress_download"))
+                            last_report = now
+                self.cancellable = False
+                if self.isInterruptionRequested():
+                    raise DownloadCancelled()
                 if received != size or h.hexdigest() != expected:
                     raise ValueError("SHA-256 verification failed; installation cancelled")
                 os.replace(temporary, target)
@@ -345,6 +387,8 @@ class ProductWorker(QThread):
                         raise RuntimeError("Close Enigma Disk and try again.") from exc
                     remove_shortcuts(self.product["name"])
                 self.done.emit("remove", "", "", str(self.install_dir))
+        except DownloadCancelled:
+            self.done.emit("cancelled", "", "", str(self.install_dir))
         except Exception as exc:
             self.done.emit(self.action, "", str(exc), str(self.install_dir))
         finally:
@@ -835,6 +879,7 @@ class Hub(QMainWindow):
         if action == "launch" and status == "success":
             self.state["recent"][item["id"]] = datetime.now().isoformat(timespec="seconds")
         self.save_state()
+        self.refresh_home_recent()
 
     def favorite_button(self, item):
         button = QPushButton(objectName="favorite")
@@ -996,7 +1041,7 @@ class Hub(QMainWindow):
             action.triggered.connect(lambda checked=False, value=code: self.change_language(value))
         language.setMenu(menu)
         tl.addWidget(language)
-        right.addWidget(top); right.addWidget(self.stack,1); shell.addLayout(right,1); self.setCentralWidget(root)
+        right.addWidget(top); right.addWidget(self.stack,1); self.workspace_layout = right; shell.addLayout(right,1); self.setCentralWidget(root)
 
     def adaptive_row(self, breakpoint, parent=None):
         row = QBoxLayout(QBoxLayout.LeftToRight, parent)
@@ -1096,6 +1141,15 @@ class Hub(QMainWindow):
         art = Cover("hub-universe.svg", 180)
         hb.addWidget(art, 2)
         box.addWidget(hero)
+        self.home_recent_panel = QFrame(objectName="sectionPanel")
+        recent_content = QVBoxLayout(self.home_recent_panel)
+        recent_content.setContentsMargins(16, 14, 16, 14)
+        recent_content.addWidget(self.copy_label(self.wc("continue"), "section"))
+        self.home_recent = QVBoxLayout()
+        recent_content.addLayout(self.home_recent)
+        self.home_recent_signature = None
+        self.home_recent_panel.hide()
+        box.addWidget(self.home_recent_panel)
         stats = self.adaptive_row(900)
         for icon, title, value in (("catalog", tr("apps"), str(len(PRODUCTS))), ("library", tr("games"), str(len(GAMES))), ("shield", tr("integrity_title"), "SHA-256")):
             panel = QFrame(objectName="stat")
@@ -1457,7 +1511,8 @@ class Hub(QMainWindow):
             header.addWidget(self.copy_label(item["name"], "releaseName"), 1)
             row.addLayout(header)
             action = workspace_copy(item["action"], Hub.lang) if item["action"] in ("launch", "install", "update", "remove", "verify") else item["action"]
-            row.addWidget(self.copy_label(action + " · " + self.wc("success" if item["status"] == "success" else "failed") + " · " + item["date"].replace("T", " ")[:16], "muted"))
+            status = item["status"] if item["status"] in ("success", "failed", "cancelled") else "failed"
+            row.addWidget(self.copy_label(action + " · " + self.wc(status) + " · " + item["date"].replace("T", " ")[:16], "muted"))
             timeline.addWidget(card)
         if not self.state["history"]:
             timeline.addStretch()
@@ -1523,7 +1578,34 @@ class Hub(QMainWindow):
                 control.setVisible(installed)
             for label in self.path_labels.get(p["id"], []):
                 self.set_path_text(label, self.state["paths"][p["id"]])
-        self.refresh_game_states(); self.refresh_library()
+        self.refresh_game_states(); self.refresh_library(); self.refresh_home_recent()
+
+    def refresh_home_recent(self):
+        if not hasattr(self, "home_recent"):
+            return
+        entries = [item for item in PRODUCTS + GAMES if item["id"] in self.state["recent"] and (self.is_installed(item) if item in PRODUCTS else self.find_game_exe(item))]
+        entries.sort(key=lambda item: self.state["recent"][item["id"]], reverse=True)
+        entries = entries[:3]
+        signature = tuple((item["id"], self.state["recent"][item["id"]]) for item in entries)
+        if signature == self.home_recent_signature:
+            return
+        self.home_recent_signature = signature
+        while self.home_recent.count():
+            child = self.home_recent.takeAt(0).widget()
+            if child:
+                child.deleteLater()
+        self.home_recent_panel.setVisible(bool(entries))
+        for item in entries:
+            tile = QWidget()
+            row = QHBoxLayout(tile)
+            row.setContentsMargins(0, 5, 0, 5)
+            row.addWidget(self.asset_image(item["id"] + ".png", 32) if item in PRODUCTS else self.icon_label("play", "#F4CC0C", 28))
+            row.addWidget(self.copy_label(item["name"], "releaseName"), 1)
+            launch = QPushButton(tr("launch"), objectName="secondary")
+            launch.setIcon(ui_icon("play", "#F4CC0C"))
+            launch.clicked.connect(lambda checked=False, p=item: self.launch_product(p) if p in PRODUCTS else self.launch_game(p))
+            row.addWidget(launch)
+            self.home_recent.addWidget(tile)
 
     def refresh_game_states(self):
         for g in GAMES:
@@ -1716,27 +1798,59 @@ class Hub(QMainWindow):
             for button,_ in cards:button.setEnabled(False)
         for controls in getattr(self,"product_controls",{}).values():
             for button in controls:button.setEnabled(False)
-        self.task_strip = QWidget(objectName="taskStrip")
-        progress_row = QHBoxLayout(self.task_strip)
-        progress_row.setContentsMargins(7, 3, 9, 3)
-        self.task_label = QLabel(product["name"], objectName="taskLabel")
-        progress_row.addWidget(self.task_label)
+        self.active_task_action = action
+        self.task_strip = QFrame(objectName="transferPanel")
+        transfer_layout = QVBoxLayout(self.task_strip)
+        transfer_layout.setContentsMargins(22, 12, 22, 13)
+        transfer_layout.setSpacing(7)
+        progress_row = QHBoxLayout()
+        progress_row.addWidget(self.icon_label("download" if action in ("install", "update") else "shield", "#F4CC0C", 21))
+        operation_label = self.wc("verify") if action == "verify" else tr(action)
+        self.task_label = self.copy_label(product["name"] + " · " + operation_label, "releaseName")
+        progress_row.addWidget(self.task_label, 1)
+        self.task_percent = self.copy_label("0%", "eyebrow")
+        progress_row.addWidget(self.task_percent)
+        self.cancel_download = QPushButton(tr("cancel"), objectName="secondary")
+        self.cancel_download.setEnabled(action in ("install", "update"))
+        self.cancel_download.setVisible(action in ("install", "update"))
+        self.cancel_download.clicked.connect(self.cancel_product_download)
+        progress_row.addWidget(self.cancel_download)
+        transfer_layout.addLayout(progress_row)
         self.progress = QProgressBar()
-        progress_row.addWidget(self.progress)
-        self.progress.setFixedWidth(130)
+        self.progress.setTextVisible(False)
+        transfer_layout.addWidget(self.progress)
+        self.transfer_details = self.copy_label(self.wc("preparing") if action in ("install", "update") else tr("running"), "muted")
+        transfer_layout.addWidget(self.transfer_details)
         self.progress.setValue(0)
         self.progress_motion = QPropertyAnimation(self.progress, b"value", self.progress)
         self.progress_motion.setDuration(180)
         self.progress_motion.setEasingCurve(QEasingCurve.OutCubic)
         self.progress.setAccessibleName(tr("running"))
-        self.statusBar().addPermanentWidget(self.task_strip)
+        self.workspace_layout.addWidget(self.task_strip)
         self.status_message(tr("running"))
-        worker=ProductWorker(product,action,self.state["paths"][product["id"]],self.state["hashes"].get(product["id"])); worker.progress.connect(self.task_progress); worker.done.connect(lambda a,v,e,d,p=product:self.task_done(p,a,v,e,d)); worker.finished.connect(lambda:self.workers.remove(worker) if worker in self.workers else None); self.workers.append(worker); worker.start()
+        worker=ProductWorker(product,action,self.state["paths"][product["id"]],self.state["hashes"].get(product["id"])); worker.progress.connect(self.task_progress); worker.transfer.connect(self.transfer_progress); worker.done.connect(lambda a,v,e,d,p=product:self.task_done(p,a,v,e,d)); worker.finished.connect(lambda:self.workers.remove(worker) if worker in self.workers else None); self.workers.append(worker); self.active_product_worker = worker; worker.start()
+
+    def cancel_product_download(self):
+        worker = getattr(self, "active_product_worker", None)
+        if worker and worker.isRunning() and worker.cancellable and self.cancel_download.isEnabled():
+            worker.requestInterruption()
+            self.cancel_download.setEnabled(False)
+            self.transfer_details.setText(self.wc("cancelling"))
+
+    def transfer_progress(self, received, total, speed, remaining):
+        if not self.active_product_worker or self.active_product_worker.isInterruptionRequested():
+            return
+        minutes, seconds = divmod(remaining, 60)
+        self.transfer_details.setText(f"{format_bytes(received)} / {format_bytes(total)}   ·   {format_bytes(speed)}/s   ·   {self.wc('remaining')} ~{minutes:02}:{seconds:02}")
 
     def status_message(self,message):self.statusBar().showMessage(message,5000)
 
     def task_progress(self,value,message):
         self.task_strip.setToolTip(message)
+        self.task_percent.setText(f"{value}%")
+        if value >= 80:
+            self.cancel_download.setEnabled(False)
+            self.transfer_details.setText(message)
         if not self.state.get("motion", True):
             self.progress.setValue(value)
             self.status_message(message)
@@ -1753,8 +1867,14 @@ class Hub(QMainWindow):
         for controls in getattr(self,"product_controls",{}).values():
             for button in controls:button.setEnabled(True)
         self.progress_motion.stop()
-        self.statusBar().removeWidget(self.task_strip)
+        self.workspace_layout.removeWidget(self.task_strip)
+        self.task_strip.hide()
         self.task_strip.deleteLater()
+        self.active_product_worker = None
+        if action == "cancelled":
+            self.record_activity(product, self.active_task_action, "cancelled")
+            self.status_message(self.wc("cancelled"))
+            return
         if error:
             self.record_activity(product, action, "failed")
             self.notify(tr("failed"),error); self.status_message(error[:150]); return

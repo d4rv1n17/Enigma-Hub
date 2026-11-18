@@ -171,6 +171,62 @@ class WorkspaceTests(unittest.TestCase):
             APP.processEvents()
             self.assertLessEqual(self.window.stack.currentWidget().horizontalScrollBar().maximum(), 1, item["id"])
 
+    def test_cancelled_download_never_installs_and_removes_partial(self):
+        payload = b"cancel before committing"
+        product = hub.PRODUCTS[1]
+        release = {"tag_name": "v2.0.0", "assets": [{"name": product["asset"], "digest": "sha256:" + hashlib.sha256(payload).hexdigest(), "size": len(payload), "browser_download_url": "https://github.com/" + product["repo"] + "/releases/download/v2.0.0/" + product["asset"]}]}
+        target = self.directory / "cancelled"
+        worker = hub.ProductWorker(product, "install", target)
+        results, transfers = [], []
+        worker.done.connect(lambda *args: results.append(args))
+        worker.transfer.connect(lambda *args: transfers.append(args))
+        with patch.object(hub, "urlopen", side_effect=[io.BytesIO(json.dumps(release).encode()), io.BytesIO(payload)]), patch.object(worker, "isInterruptionRequested", side_effect=[False, False, False, True]):
+            worker.run()
+        self.assertEqual(results[0][0:3], ("cancelled", "", ""))
+        self.assertFalse(target.exists())
+        self.assertEqual(list((self.directory / "downloads").iterdir()), [])
+        self.assertEqual(transfers[0][0:2], (len(payload), len(payload)))
+
+    def test_insufficient_space_does_not_download_installer(self):
+        product = hub.PRODUCTS[1]
+        release = {"tag_name": "v2.0.0", "assets": [{"name": product["asset"], "digest": "sha256:" + "a" * 64, "size": 100, "browser_download_url": "https://github.com/" + product["repo"] + "/releases/download/v2.0.0/" + product["asset"]}]}
+        worker = hub.ProductWorker(product, "install", self.directory / "no-space")
+        results = []
+        worker.done.connect(lambda *args: results.append(args))
+        with patch.object(hub, "urlopen", return_value=io.BytesIO(json.dumps(release).encode())) as request, patch.object(hub, "available_space", return_value=0):
+            worker.run()
+        self.assertEqual(request.call_count, 1)
+        self.assertTrue(results[0][2])
+        self.assertFalse((self.directory / "no-space").exists())
+
+    def test_home_recent_only_offers_existing_apps(self):
+        product = hub.PRODUCTS[1]
+        folder = self.directory / "recent-app"
+        folder.mkdir()
+        executable = folder / product["exe"]
+        executable.write_bytes(b"fixture")
+        self.window.state["paths"][product["id"]] = str(folder)
+        self.window.record_activity(product, "launch")
+        self.assertEqual(self.window.home_recent.count(), 1)
+        executable.unlink()
+        self.window.refresh_home_recent()
+        self.assertTrue(self.window.home_recent_panel.isHidden())
+
+    def test_transfer_panel_reports_progress_and_safely_finishes_cancel(self):
+        with patch.object(hub.ProductWorker, "start"), patch.object(self.window, "notify") as notify:
+            self.window.start_task(hub.PRODUCTS[1], "install")
+            self.window.transfer_progress(1000000, 4000000, 500000.0, 6)
+            self.assertIn("1.0 MB / 4.0 MB", self.window.transfer_details.text())
+            self.assertIn("00:06", self.window.transfer_details.text())
+            self.window.resize(820, 600)
+            APP.processEvents()
+            self.assertTrue(self.window.task_strip.isVisible())
+            self.window.task_progress(85, "Installing")
+            self.assertFalse(self.window.cancel_download.isEnabled())
+            self.window.task_done(hub.PRODUCTS[1], "cancelled", "", "", str(self.directory))
+            notify.assert_not_called()
+            self.assertEqual(self.window.state["history"][-1]["status"], "cancelled")
+
 
 if __name__ == "__main__":
     unittest.main()
