@@ -23,6 +23,7 @@ Download **EnigmaHubSetup.exe** from [Releases](https://github.com/d4rv1n17/Enig
 - Export local diagnostics without local installation paths; clean cached product installers without removing apps.
 - Switch languages immediately, choose whether to show the startup intro, and navigate with Ctrl+1–5 / Ctrl+K.
 - Opening Hub again activates the existing window instead of starting another instance.
+- Per-monitor HiDPI awareness, fractional scaling and vector-rendered navigation icons, logos and decorative artwork.
 
 ## Development
 

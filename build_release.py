@@ -19,6 +19,7 @@ def bundle(name, entry, destination, extra=()):
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed",
         "--name", name, "--distpath", str(destination),
         "--icon", "assets/hub-icon.ico", "--add-data", "assets;assets",
+        "--manifest", "assets/windows.manifest",
         *extra, entry,
     ], cwd=root, check=True)
 

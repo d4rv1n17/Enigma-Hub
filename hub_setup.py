@@ -15,7 +15,7 @@ from PyQt5.QtCore import Qt, QThread, QPropertyAnimation, QEasingCurve, pyqtSign
 from PyQt5.QtGui import QFont, QIcon
 from PyQt5.QtWidgets import QApplication, QCheckBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QPushButton, QProgressBar, QStackedWidget, QVBoxLayout, QWidget
 
-from enigma_hub import ROOT, STYLE, Cover, Hub, ui_icon, center_on_screen, dark_caption, create_shortcuts
+from enigma_hub import ROOT, STYLE, Cover, Hub, ui_icon, center_on_screen, dark_caption, create_shortcuts, configure_display
 
 from hub_update import VERSION
 from hub_safety import reject_reparse
@@ -486,7 +486,7 @@ def main():
             log.mkdir(parents=True, exist_ok=True)
             (log / "update-error.log").write_text(str(error), encoding="utf-8")
             return 1
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    configure_display()
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
     app.setFont(QFont("Segoe UI", 10))

@@ -20,8 +20,8 @@ from hub_update import VERSION as HUB_VERSION, HubUpdateWorker, digest_file
 from hub_experience import copy as workspace_copy, PREMIUM_STYLE
 from hub_safety import reject_reparse
 
-from PyQt5.QtCore import Qt, QRectF, QThread, QTimer, QElapsedTimer, QVariantAnimation, QPropertyAnimation, QEasingCurve, pyqtSignal
-from PyQt5.QtGui import QColor, QCursor, QFont, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
+from PyQt5.QtCore import Qt, QRectF, QSize, QThread, QTimer, QElapsedTimer, QVariantAnimation, QPropertyAnimation, QEasingCurve, pyqtSignal
+from PyQt5.QtGui import QColor, QCursor, QFont, QIcon, QIconEngine, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
 from PyQt5.QtSvg import QSvgRenderer
 from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtWidgets import (
@@ -437,6 +437,28 @@ def remove_shortcuts(name):
         except OSError: pass
 
 
+class SvgIconEngine(QIconEngine):
+    """Render icons at the requested physical resolution, including fractional DPI."""
+    def __init__(self, svg):
+        super().__init__()
+        self.svg = svg
+
+    def clone(self):
+        return SvgIconEngine(self.svg)
+
+    def paint(self, painter, rect, mode, state):
+        QSvgRenderer(self.svg).render(painter, QRectF(rect))
+
+    def pixmap(self, size, mode, state):
+        result = QPixmap(size)
+        result.fill(Qt.transparent)
+        painter = QPainter(result)
+        painter.setRenderHint(QPainter.Antialiasing)
+        self.paint(painter, result.rect(), mode, state)
+        painter.end()
+        return result
+
+
 @lru_cache(maxsize=64)
 def ui_icon(name, color="#C2C2C2"):
     svg = (
@@ -444,18 +466,84 @@ def ui_icon(name, color="#C2C2C2"):
         f'<path d="{ICONS[name]}" fill="none" stroke="{color}" stroke-width="1.65" '
         'stroke-linecap="round" stroke-linejoin="round"/></svg>'
     )
-    pixmap = QPixmap(48, 48)
-    pixmap.fill(Qt.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.Antialiasing)
-    QSvgRenderer(svg.encode()).render(painter)
-    painter.end()
-    pixmap.setDevicePixelRatio(2)
-    return QIcon(pixmap)
+    return QIcon(SvgIconEngine(svg.encode()))
+
+
+class Artwork(QWidget):
+    """Keep vector sources until paint time; never bake a logo into a small bitmap."""
+    def __init__(self, filename, width):
+        super().__init__()
+        path = ROOT / "assets" / filename
+        vector = path.with_suffix(".svg")
+        if filename == "hub-icon.png":
+            vector = ROOT / "assets/hub-symbol.svg"
+        self.renderer = QSvgRenderer(str(vector)) if vector.is_file() else None
+        self.image = QImage(str(path)) if self.renderer is None else QImage()
+        size = self.renderer.defaultSize() if self.renderer else self.image.size()
+        self.setFixedSize(width, max(1, round(width * size.height() / max(1, size.width()))))
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform)
+        if self.renderer:
+            self.renderer.render(painter, QRectF(self.rect()))
+        else:
+            painter.drawImage(QRectF(self.rect()), self.image)
+
+
+class Glyph(QWidget):
+    def __init__(self, name, color, size):
+        super().__init__()
+        self.symbol = ui_icon(name, color)
+        self.setFixedSize(size, size)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        self.symbol.paint(painter, self.rect())
+
+
+class ChoiceButton(QPushButton):
+    """Keyboard-accessible choice menu with a consistent vector chevron."""
+    def __init__(self, choices, callback):
+        super().__init__(choices[0][0])
+        self.setObjectName("choice")
+        self.setCursor(Qt.PointingHandCursor)
+        self.setMinimumHeight(42)
+        self.menu_view = QMenu(self)
+        self.options = []
+        for index, (label, value) in enumerate(choices):
+            action = self.menu_view.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(index == 0)
+            def select(checked=False, label=label, value=value, action=action):
+                for candidate in self.options:
+                    candidate.setChecked(candidate is action)
+                self.setText(label)
+                callback(value)
+            action.triggered.connect(select)
+            self.options.append(action)
+        self.setMenu(self.menu_view)
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QColor("#BAB7AD"))
+        x, y = self.width() - 21, self.height() // 2
+        painter.drawLine(x-4, y-2, x, y+2)
+        painter.drawLine(x, y+2, x+4, y-2)
+
+
+def configure_display():
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+    QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 
 def dark_caption(widget):
     """Color the native title bar and retain Windows snap, resize and system controls."""
+    if isinstance(widget, QDialog):
+        widget.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
     if sys.platform != "win32":
         return
     try:
@@ -581,6 +669,7 @@ class Cover(QWidget):
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         assets = ROOT / "assets"
         picture = QImage(str(assets / filename)) if filename else QImage()
+        self.vector = QSvgRenderer(str(assets / filename)) if filename and filename.endswith(".svg") else None
         self.art = QPixmap.fromImage(picture)
         self.icon = QPixmap(str(assets / icon)) if icon else QPixmap()
         self.motion = QVariantAnimation(self)
@@ -617,7 +706,12 @@ class Cover(QWidget):
         clip.addRoundedRect(bounds, 12, 12)
         painter.setClipPath(clip)
         painter.fillRect(bounds, QColor("#242424"))
-        if not self.art.isNull():
+        if self.vector:
+            scale = 1 + 0.085 * self.zoom
+            target = bounds.adjusted(-bounds.width() * (scale-1)/2, -bounds.height() * (scale-1)/2, bounds.width() * (scale-1)/2, bounds.height() * (scale-1)/2)
+            self.vector.setAspectRatioMode(Qt.KeepAspectRatioByExpanding)
+            self.vector.render(painter, target)
+        elif not self.art.isNull():
             scale = max(bounds.width() / self.art.width(), bounds.height() / self.art.height())
             scale *= 1 + 0.085 * self.zoom
             width = self.art.width() * scale
@@ -769,6 +863,7 @@ class Hub(QMainWindow):
 
     def dialog_panel(self, title, message="", icon=None):
         dialog = QDialog(self)
+        dialog.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
         dialog.setWindowTitle(title)
         dialog.resize(min(620, self.width() - 56), 300)
         dialog.setMinimumWidth(min(460, self.width() - 56))
@@ -852,9 +947,7 @@ class Hub(QMainWindow):
 
     @staticmethod
     def icon_label(name, color="#C2C2C2", size=19):
-        label = QLabel()
-        label.setPixmap(ui_icon(name, color).pixmap(size, size))
-        return label
+        return Glyph(name, color, size)
 
     def build_shell(self):
         root = QWidget(objectName="root"); shell = QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); shell.setSpacing(0)
@@ -872,11 +965,16 @@ class Hub(QMainWindow):
         self.nav_buttons=[]; self.stack=QStackedWidget()
         for index, key in enumerate(("overview", "catalog", "library", "news")):
             button = QPushButton(tr(key))
+            button.setIconSize(QSize(20, 20))
+            button.setMinimumHeight(44)
+            button.setCursor(Qt.PointingHandCursor)
             button.clicked.connect(lambda checked=False, page=index: self.navigate(page))
             sl.addWidget(button)
             self.nav_buttons.append(button)
         sl.addStretch()
         activity = QPushButton(self.wc("activity"))
+        activity.setObjectName("railUtility")
+        activity.setIconSize(QSize(20, 20))
         activity.setIcon(ui_icon("activity"))
         activity.clicked.connect(self.show_activity)
         sl.addWidget(activity)
@@ -951,10 +1049,7 @@ class Hub(QMainWindow):
 
     @staticmethod
     def asset_image(filename, size):
-        label = QLabel()
-        image = QPixmap(str(ROOT / "assets" / filename))
-        label.setPixmap(image.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        return label
+        return Artwork(filename, size)
 
     def add_product_card(self, layout, product, compact=False):
         frame=QFrame(objectName="card"); frame.setMinimumWidth(245); box=QVBoxLayout(frame); box.setContentsMargins(16,16,16,16); box.setSpacing(12)
@@ -1155,11 +1250,9 @@ class Hub(QMainWindow):
         self.library_search.textChanged.connect(lambda text: self.set_library_option("query", text))
         tools.addWidget(self.library_search, 2)
         for option, values in (("filter", ("all", "favorites", "apps", "games")), ("sort", ("recent", "name"))):
-            combo = QComboBox()
-            for value in values:
-                combo.addItem(tr(value) if value in ("apps", "games") else self.wc(value), value)
+            choices = [(tr(value) if value in ("apps", "games") else self.wc(value), value) for value in values]
+            combo = ChoiceButton(choices, lambda value, key=option: self.set_library_option(key, value))
             combo.setAccessibleName(self.wc("favorites") if option == "filter" else self.wc("recent"))
-            combo.currentIndexChanged.connect(lambda index, c=combo, key=option: self.set_library_option(key, c.currentData()))
             tools.addWidget(combo, 1)
         box.addLayout(tools)
         self.library_area = QVBoxLayout()
@@ -1351,7 +1444,7 @@ class Hub(QMainWindow):
     def show_activity(self):
         dialog, content = self.dialog_panel(self.wc("activity"), icon="activity")
         dialog.resize(650, 520)
-        panel = QWidget()
+        panel = QWidget(objectName="activityCanvas")
         timeline = QVBoxLayout(panel)
         timeline.setContentsMargins(0, 0, 0, 0)
         timeline.setSpacing(10)
@@ -1367,7 +1460,11 @@ class Hub(QMainWindow):
             row.addWidget(self.copy_label(action + " · " + self.wc("success" if item["status"] == "success" else "failed") + " · " + item["date"].replace("T", " ")[:16], "muted"))
             timeline.addWidget(card)
         if not self.state["history"]:
-            timeline.addWidget(self.copy_label(self.wc("activity_empty"), "body"))
+            timeline.addStretch()
+            timeline.addWidget(self.icon_label("activity", "#F4CC0C", 42), 0, Qt.AlignHCenter)
+            label = self.copy_label(self.wc("activity_empty"), "subtitle")
+            label.setAlignment(Qt.AlignCenter)
+            timeline.addWidget(label)
         timeline.addStretch()
         content.addWidget(self.scroll(panel), 1)
         self.dialog_actions(dialog, content, "OK")
@@ -2123,8 +2220,7 @@ class Hub(QMainWindow):
 
 
 def main():
-    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling)
-    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps)
+    configure_display()
     app = QApplication(sys.argv)
     app.setApplicationName("Enigma Hub")
     app.setOrganizationName("Enigma Studio")

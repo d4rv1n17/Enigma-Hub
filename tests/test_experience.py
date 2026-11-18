@@ -12,6 +12,8 @@ from PyQt5.QtWidgets import QApplication, QDialog, QScrollArea
 from PyQt5.QtCore import QTimer
 import enigma_hub as hub
 
+if QApplication.instance() is None:
+    hub.configure_display()
 APP = QApplication.instance() or QApplication([])
 APP.setStyle("Fusion")
 
@@ -43,6 +45,28 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(visible, ["disk"])
         self.window.filter_catalog(2)
         self.assertTrue(self.window.catalog_empty.isVisible())
+
+    def test_dialog_has_no_dead_context_help_button(self):
+        from PyQt5.QtCore import Qt
+        dialog, content = self.window.dialog_panel("Activity")
+        self.assertFalse(dialog.windowFlags() & Qt.WindowContextHelpButtonHint)
+        dialog.deleteLater()
+
+    def test_vector_assets_and_icons_render_at_large_resolution(self):
+        image = self.window.asset_image("hub-fold-koulen.png", 162)
+        self.assertTrue(image.renderer.isValid())
+        icon = hub.ui_icon("library").pixmap(256, 256)
+        self.assertEqual(icon.width() / icon.devicePixelRatio(), 256)
+        self.assertEqual(icon.height() / icon.devicePixelRatio(), 256)
+        image.deleteLater()
+
+    def test_library_choice_menu_changes_filter_and_selection(self):
+        choices = self.window.findChildren(hub.ChoiceButton)
+        selector = choices[0]
+        selector.options[1].trigger()
+        self.assertEqual(self.window.library_filter, "favorites")
+        self.assertTrue(selector.options[1].isChecked())
+        self.assertFalse(selector.options[0].isChecked())
 
     def test_language_changes_in_place_across_all_pages(self):
         for code in ("ru", "ro", "de", "es", "fr", "en"):

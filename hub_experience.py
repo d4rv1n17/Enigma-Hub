@@ -38,12 +38,26 @@ def copy(key, language):
 PREMIUM_STYLE = """
 QFrame#sidebar { background: #151515; border-right: 1px solid #292929; }
 QFrame#topbar { background: #121212; border-bottom: 1px solid #292929; }
-QPushButton#nav { padding: 12px 14px; color: #B2B2B2; }
-QPushButton#navactive { padding: 12px 14px; background: #29271D; border: 1px solid #50472A; color: #F4CC0C; }
+QPushButton#nav { padding: 10px 14px; font-size: 14px; color: #BDBDBD; border: 1px solid transparent; border-radius: 9px; text-align: left; }
+QPushButton#nav:hover { background: #202020; border-color: #303030; }
+QPushButton#nav:focus { border-color: #70633A; }
+QPushButton#navactive { padding: 10px 14px 10px 12px; font-size: 14px; background: #292619; border: 1px solid #5C4D19; border-left: 3px solid #F4CC0C; border-radius: 9px; color: #F4CC0C; text-align: left; }
+QPushButton#navactive:hover { background: #302B19; }
+QPushButton#railUtility { padding: 12px 14px; color: #AAA79F; }
+QPushButton#railUtility:hover { background: #202020; color: #F4CC0C; }
+QPushButton#choice { background: #202020; border: 1px solid #3A3A36; border-radius: 10px; padding: 10px 38px 10px 14px; color: #E4E2DA; text-align: left; min-width: 120px; }
+QPushButton#choice:hover { background: #292821; border-color: #756531; }
+QPushButton#choice:focus { border-color: #F4CC0C; }
+QPushButton#choice::menu-indicator { image: none; width: 0; height: 0; }
+QMenu { background: #1C1C1B; border: 1px solid #4B4634; padding: 7px; }
+QMenu::item { padding: 11px 30px 11px 30px; border-radius: 6px; }
+QMenu::item:selected { background: #35301D; color: #F4CC0C; }
+QWidget#activityCanvas { background: #171717; }
+QFrame#dialogHeader { background: #1E1E1C; border: 1px solid #403B2C; border-radius: 12px; }
 QFrame#hero { background: qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #26251F,stop:0.55 #1B1B1A,stop:1 #171717); border: 1px solid #423E30; border-radius: 20px; }
 QFrame#card { background: qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #232323,stop:1 #1A1A1A); border: 1px solid #373737; border-radius: 18px; }
 QFrame#card:hover, QFrame#libraryEntry:hover { border-color: #74623A; }
-QLabel#eyebrow { color: #F4CC0C; font-size: 10px; font-weight: 700; }
+QLabel#eyebrow { color: #F4CC0C; font-size: 11px; font-weight: 700; }
 QLabel#title { font-size: 30px; font-weight: 700; }
 QLabel#heroTitle { font-size: 34px; font-weight: 700; }
 QLabel#productTitle { font-size: 20px; font-weight: 600; }
