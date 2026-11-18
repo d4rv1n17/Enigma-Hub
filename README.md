@@ -15,6 +15,14 @@ Download **EnigmaHubSetup.exe** from [Releases](https://github.com/d4rv1n17/Enig
 - English by default, plus Russian, Romanian, German, Spanish, and French.
 - Optional interface animations and a startup intro.
 - Hub updates download in the background. Restart from the update button to install the new version.
+- Search the catalog and library; filter favorites and sort by recent launches or name.
+- Connect an existing Cube or Disk installation without reinstalling it.
+- Favorite products and keep a local history of launches, installations and updates.
+- Read full release notes inside Hub with formatted Markdown.
+- Verify the main installed executable against the baseline saved after a verified Hub installation. This does not check every application data file.
+- Export local diagnostics without local installation paths; clean cached product installers without removing apps.
+- Switch languages immediately, choose whether to show the startup intro, and navigate with Ctrl+1–5 / Ctrl+K.
+- Opening Hub again activates the existing window instead of starting another instance.
 
 ## Development
 
@@ -31,3 +39,7 @@ Increment VERSION in hub_update.py for each release. Publish a stable GitHub rel
 ## Local data
 
 Preferences and cached news live in %APPDATA%/EnigmaHub. Downloaded product installers are under downloads; Hub updates are under hub-updates. A failed Hub installation records update-error.log.
+
+## Version 1.1.0
+
+The website/GitHub edition has a unified graphite-and-yellow design, custom product artwork, searchable library, favorites, recent launches, local activity history, executable verification and diagnostics. News and the branded installer share the same visual style. Store packaging remains a separate future distribution channel.

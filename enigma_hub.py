@@ -12,18 +12,22 @@ import sys
 import tempfile
 import time
 import traceback
+from datetime import datetime
 import webbrowser
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 from hub_update import VERSION as HUB_VERSION, HubUpdateWorker, digest_file
+from hub_experience import copy as workspace_copy, PREMIUM_STYLE
+from hub_safety import reject_reparse
 
 from PyQt5.QtCore import Qt, QRectF, QThread, QTimer, QElapsedTimer, QVariantAnimation, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt5.QtGui import QColor, QCursor, QFont, QIcon, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
 from PyQt5.QtSvg import QSvgRenderer
+from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtWidgets import (
     QApplication, QBoxLayout, QDialog, QFileDialog, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QPushButton, QProgressBar, QTextBrowser,
-    QScrollArea, QStackedWidget, QVBoxLayout, QWidget, QSizePolicy,
+    QScrollArea, QStackedWidget, QVBoxLayout, QWidget, QSizePolicy, QComboBox, QShortcut,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -42,6 +46,7 @@ GAMES = [
 DEFAULTS = {
     "lang": "en", "paths": {p["id"]: str(Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir())) / "Programs" / p["folder"]) for p in PRODUCTS},
     "games": {}, "installed": {}, "auto_check": True, "motion": True, "hub_auto_update": True,
+    "favorites": [], "recent": {}, "history": [], "hashes": {}, "intro": True,
 }
 TEXT = {
     "ru": {"overview":"Обзор","catalog":"Каталог","library":"Моя библиотека","news":"Новости","settings":"Настройки","welcome":"ТВОЯ ВСЕЛЕННАЯ ENIGMA","hero":"Открой для себя Enigma.","intro":"Приложения студии — в одном месте. Игры запускаются здесь, покупка проходит в Steam и других магазинах.","explore":"Открыть каталог","featured":"В центре внимания","apps":"Приложения","games":"Игры студии","view":"Все продукты","installed":"УСТАНОВЛЕНО","not_installed":"В КАТАЛОГЕ","launch":"Запустить","install":"Установить","update":"Обновить","remove":"Удалить","details":"Подробнее","buy":"Купить / страница магазина ↗","configure":"Настроить","choose_folder":"Папка установки","choose":"Выбрать папку","ready":"Готово к установке","running":"Выполняется…","checking":"Проверяем выпуск…","news_title":"Новости студии","news_desc":"Последние обновления и заметки о продуктах.","support":"Поддержка","support_desc":"Документация, ответы и сообщения об ошибках.","check_updates":"Проверить обновления","auto_check":"Проверять обновления при запуске","language":"Язык интерфейса","preferences":"Параметры","about":"О Enigma Hub","footer":"ENIGMA STUDIO  ·  Всё необходимое в одном месте","choose_title":"Выберите папку для установки","folder_saved":"Папка установки обновлена.","folder_installed":"Сначала удалите продукт, чтобы изменить папку установки.","uninstall_confirm":"Удалить {name} из папки установки? Пользовательские данные приложения будут сохранены.","uninstalled":"{name} удалён.","installed_ok":"{name} установлен. Можно запускать.","updated_ok":"{name} обновлён до {version}.","integrity":"Файл загружен и проверен по SHA-256.","unsupported":"Этот продукт пока недоступен для установки на этой системе.","game_not_found":"Игра не найдена. Настройте .exe или Steam App ID.","setup_game":"Настроить запуск","game_exe":"Исполняемый файл игры","steam_id":"Steam App ID (можно оставить пустым)","store_url":"Ссылка на страницу магазина","save":"Сохранить","cancel":"Отмена","no_news":"Свежих новостей пока нет.","loading_news":"Загружаем новости…","checksum_missing":"В выпуске отсутствует SHA-256. Загрузка отменена.","failed":"Не удалось выполнить операцию","progress_download":"Загрузка и проверка файла…","progress_install":"Установка продукта…","progress_remove":"Удаление продукта…","install_path":"Путь","release":"Релиз","open_site":"Сайт студии ↗","news_empty":"Новостей пока нет","support_email":"Сообщить об ошибке","installation":"Установка","integrity_title":"Целостность файлов","updates":"Обновления","language_note":"Изменение применяется сразу.","external":"Покупка и установка игр выполняются в выбранном магазине. Enigma Hub не принимает платежи.","open_release":"Открыть страницу релиза ↗","no_products":"Здесь появятся установленные продукты студии.","game_installed":"Установлена · Steam","up_to_date":"актуальная версия","update_available":"доступно обновление","not_installed_state":"не установлено","latest_version":"Последняя версия"},
@@ -89,6 +94,10 @@ UPDATE_COPY = {
     "fr": ("Installée", "Dernière version", "Vérification impossible", "Terminé"),
 }
 ICONS = {
+    "search": "M10 3a7 7 0 1 0 0 14 7 7 0 1 0 0-14z M15 15l6 6",
+    "star": "M12 3l3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z",
+    "play": "M8 4l12 8-12 8z",
+    "activity": "M3 12h4l3-8 4 16 3-8h4",
     "language": "M12 3a9 9 0 1 0 0 18 9 9 0 1 0 0-18z M3 12h18 M12 3c5 5 5 13 0 18-5-5-5-13 0-18z",
     "home": "M3 10l9-7 9 7v10H3z M9 20v-7h6v7",
     "catalog": "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
@@ -226,12 +235,25 @@ class ProductWorker(QThread):
     progress = pyqtSignal(int, str)
     done = pyqtSignal(str, str, str, str)
 
-    def __init__(self, product, action, install_dir):
+    def __init__(self, product, action, install_dir, expected_hash=None):
         super().__init__()
         self.product, self.action, self.install_dir = product, action, Path(install_dir)
+        self.expected_hash = expected_hash
 
     def run(self):
+        temporary = None
         try:
+            reject_reparse(self.install_dir)
+            reject_reparse(self.install_dir / self.product["exe"])
+            reject_reparse(self.install_dir / (self.product["exe"] + ".new"))
+            if self.action == "verify":
+                self.progress.emit(35, workspace_copy("verify", Hub.lang))
+                if not self.expected_hash:
+                    raise ValueError(workspace_copy("no_baseline", Hub.lang))
+                if digest_file(self.install_dir / self.product["exe"]) != self.expected_hash:
+                    raise ValueError(workspace_copy("changed", Hub.lang))
+                self.done.emit("verify", "", "", str(self.install_dir))
+                return
             if self.action in ("install", "update"):
                 self.progress.emit(5, tr("progress_download"))
                 repo = self.product["repo"]
@@ -254,10 +276,14 @@ class ProductWorker(QThread):
                 if size <= 0 or size > (1500 * 1024 * 1024) or len(expected) != 64:
                     raise ValueError("Invalid release metadata")
                 downloads = APPDATA / "downloads"
+                reject_reparse(downloads)
                 downloads.mkdir(parents=True, exist_ok=True)
                 target = downloads / wanted
+                temporary = target.with_suffix(".part")
+                reject_reparse(target)
+                reject_reparse(temporary)
                 h, received = hashlib.sha256(), 0
-                with urlopen(Request(url, headers={"User-Agent": "EnigmaHub/1.0"}), timeout=35) as response, target.open("wb") as out:
+                with urlopen(Request(url, headers={"User-Agent": "EnigmaHub/" + HUB_VERSION}), timeout=35) as response, temporary.open("wb") as out:
                     while True:
                         block = response.read(1024 * 128)
                         if not block:
@@ -267,8 +293,8 @@ class ProductWorker(QThread):
                             raise ValueError("Downloaded file exceeds release size")
                         self.progress.emit(min(75, 5 + int(received * 70 / size)), tr("progress_download"))
                 if received != size or h.hexdigest() != expected:
-                    target.unlink(missing_ok=True)
                     raise ValueError("SHA-256 verification failed; installation cancelled")
+                os.replace(temporary, target)
                 self.progress.emit(80, tr("integrity"))
                 self.install_dir.parent.mkdir(parents=True, exist_ok=True)
                 if self.product["id"] == "cube":
@@ -287,6 +313,8 @@ class ProductWorker(QThread):
                     shutil.copy2(target, staged)
                     os.replace(staged, executable)
                     create_shortcuts(self.product["name"], executable)
+                if not (self.install_dir / self.product["exe"]).is_file():
+                    raise RuntimeError("The installer finished without creating the application file.")
                 self.progress.emit(100, tr("installed_ok"))
                 self.done.emit(self.action, version, "", str(self.install_dir))
             elif self.action == "remove":
@@ -319,6 +347,9 @@ class ProductWorker(QThread):
                 self.done.emit("remove", "", "", str(self.install_dir))
         except Exception as exc:
             self.done.emit(self.action, "", str(exc), str(self.install_dir))
+        finally:
+            if temporary:
+                temporary.unlink(missing_ok=True)
 
 
 NEWS_FIELDS = ("name", "tag", "title", "body", "url", "date")
@@ -378,15 +409,16 @@ class UpdateCheckWorker(QThread):
     checked = pyqtSignal(dict, str)
     def run(self):
         results = {}
-        try:
-            for product in PRODUCTS:
+        errors = []
+        for product in PRODUCTS:
+            try:
                 req = Request(f"https://api.github.com/repos/{product['repo']}/releases/latest", headers={"User-Agent": "EnigmaHub/1.0"})
                 with urlopen(req, timeout=15) as response:
                     data = json.loads(response.read(1024 * 1024))
                 results[product["id"]] = str(data.get("tag_name", "")).lstrip("v")
-            self.checked.emit(results, "")
-        except Exception as exc:
-            self.checked.emit(results, str(exc))
+            except Exception as exc:
+                errors.append(product["name"] + ": " + str(exc))
+        self.checked.emit(results, "\n".join(errors))
 
 
 def create_shortcuts(name, executable):
@@ -623,15 +655,21 @@ class Hub(QMainWindow):
         self.resize(1040, 625)
         ico = ROOT / "assets" / "hub-icon.ico"
         if ico.exists(): self.setWindowIcon(QIcon(str(ico)))
-        self.setStyleSheet(STYLE)
+        self.setStyleSheet(STYLE + PREMIUM_STYLE)
         self.workers = []
         self.hub_release = None
+        self.latest_versions = {}
         self.closing = False
         self.path_labels = {}
         self.product_controls = {}
+        self.catalog_query = ""
+        self.library_query = ""
+        self.library_filter = "all"
+        self.library_sort = "recent"
         self.build_shell()
         self.pages = [self.page_home(), self.page_catalog(), self.page_library(), self.page_news(), self.page_settings()]
         for page in self.pages: self.stack.addWidget(page)
+        self.install_shortcuts()
         self.navigate(0, animate=False)
         self.hub_update_timer = QTimer(self)
         self.hub_update_timer.setInterval(4 * 60 * 60 * 1000)
@@ -670,7 +708,58 @@ class Hub(QMainWindow):
             state["installed"] = {}
         if not isinstance(state.get("lang"), str) or state["lang"] not in TEXT:
             state["lang"] = DEFAULTS["lang"]
+        for key in ("recent", "hashes"):
+            state[key] = {k: v for k, v in result.get(key, {}).items() if isinstance(k, str) and isinstance(v, str)} if isinstance(result.get(key), dict) else {}
+        state["installed"] = {k: v for k, v in state["installed"].items() if isinstance(k, str) and isinstance(v, str)}
+        state["favorites"] = [v for v in result.get("favorites", []) if isinstance(v, str)] if isinstance(result.get("favorites"), list) else []
+        state["history"] = [v for v in result.get("history", []) if isinstance(v, dict) and all(isinstance(v.get(k), str) for k in ("name", "action", "date", "status"))][-100:] if isinstance(result.get("history"), list) else []
+        for key in ("auto_check", "motion", "hub_auto_update", "intro"):
+            state[key] = result.get(key, DEFAULTS[key]) if isinstance(result.get(key, DEFAULTS[key]), bool) else DEFAULTS[key]
         return state
+
+    def wc(self, key):
+        return workspace_copy(key, Hub.lang)
+
+    def install_shortcuts(self):
+        self.keyboard_shortcuts = []
+        for index in range(5):
+            shortcut = QShortcut("Ctrl+" + str(index + 1), self)
+            shortcut.activated.connect(lambda i=index: self.navigate(i))
+            self.keyboard_shortcuts.append(shortcut)
+        search = QShortcut("Ctrl+K", self)
+        search.activated.connect(self.focus_search)
+        self.keyboard_shortcuts.append(search)
+
+    def focus_search(self):
+        self.navigate(1)
+        self.catalog_search.setFocus()
+        self.catalog_search.selectAll()
+
+    def record_activity(self, item, action, status="success"):
+        self.state["history"].append({"name": item["name"], "action": action, "status": status, "date": datetime.now().isoformat(timespec="seconds")})
+        self.state["history"] = self.state["history"][-100:]
+        if action == "launch" and status == "success":
+            self.state["recent"][item["id"]] = datetime.now().isoformat(timespec="seconds")
+        self.save_state()
+
+    def favorite_button(self, item):
+        button = QPushButton(objectName="favorite")
+        button.setCheckable(True)
+        button.setChecked(item["id"] in self.state["favorites"])
+        button.setIcon(ui_icon("star", "#E2C867" if button.isChecked() else "#A3A3A3"))
+        button.setToolTip(self.wc("favorites"))
+        button.setAccessibleName(self.wc("favorites") + " · " + item["name"])
+        def toggle(checked):
+            favorites = self.state["favorites"]
+            if checked and item["id"] not in favorites:
+                favorites.append(item["id"])
+            elif not checked and item["id"] in favorites:
+                favorites.remove(item["id"])
+            button.setIcon(ui_icon("star", "#E2C867" if checked else "#A3A3A3"))
+            self.save_state()
+            self.refresh_library()
+        button.toggled.connect(toggle)
+        return button
 
     def save_state(self):
         APPDATA.mkdir(parents=True, exist_ok=True)
@@ -755,6 +844,9 @@ class Hub(QMainWindow):
             picker.deleteLater()
 
     def scroll(self, widget):
+        if not widget.objectName():
+            widget.setObjectName("page")
+        widget.setAttribute(Qt.WA_StyledBackground, True)
         area = QScrollArea(); area.setWidgetResizable(True); area.setFrameShape(QFrame.NoFrame); area.setStyleSheet("QScrollArea { background:#121212; border:0; }"); area.viewport().setObjectName("hubScrollViewport"); area.viewport().setStyleSheet("QWidget#hubScrollViewport { background:#121212; border:0; }"); area.setWidget(widget)
         return area
 
@@ -766,7 +858,7 @@ class Hub(QMainWindow):
 
     def build_shell(self):
         root = QWidget(objectName="root"); shell = QHBoxLayout(root); shell.setContentsMargins(0,0,0,0); shell.setSpacing(0)
-        side = QFrame(objectName="sidebar"); side.setFixedWidth(200); sl = QVBoxLayout(side); sl.setContentsMargins(16,23,16,18); sl.setSpacing(7)
+        side = QFrame(objectName="sidebar"); side.setFixedWidth(190); sl = QVBoxLayout(side); sl.setContentsMargins(14,26,14,18); sl.setSpacing(8)
         brand_row = QHBoxLayout()
         brand = self.asset_image("hub-fold-koulen.png", 162)
         brand.setAccessibleName("Enigma Hub")
@@ -776,13 +868,20 @@ class Hub(QMainWindow):
         sl.addSpacing(16)
         sl.addWidget(QFrame(objectName="railDivider"))
         sl.addSpacing(10)
+        sl.addWidget(self.copy_label(self.wc("workspace"), "eyebrow"))
         self.nav_buttons=[]; self.stack=QStackedWidget()
         for index, key in enumerate(("overview", "catalog", "library", "news")):
             button = QPushButton(tr(key))
             button.clicked.connect(lambda checked=False, page=index: self.navigate(page))
             sl.addWidget(button)
             self.nav_buttons.append(button)
-        sl.addStretch(); sl.addWidget(QFrame(objectName="railDivider")); self.nav_settings=QPushButton(tr("settings")); self.nav_settings.clicked.connect(lambda:self.navigate(4)); sl.addWidget(self.nav_settings)
+        sl.addStretch()
+        activity = QPushButton(self.wc("activity"))
+        activity.setIcon(ui_icon("activity"))
+        activity.clicked.connect(self.show_activity)
+        sl.addWidget(activity)
+        sl.addWidget(self.copy_label("ENIGMA HUB  /  " + HUB_VERSION, "muted"))
+        sl.addWidget(QFrame(objectName="railDivider")); self.nav_settings=QPushButton(tr("settings")); self.nav_settings.clicked.connect(lambda:self.navigate(4)); sl.addWidget(self.nav_settings)
         shell.addWidget(side)
         right=QVBoxLayout(); right.setContentsMargins(0,0,0,0); right.setSpacing(0)
         top=QFrame(objectName="topbar"); tl=QHBoxLayout(top); tl.setContentsMargins(28,13,28,13); self.top_title = QLabel(objectName="topTitle"); tl.addWidget(self.top_title); tl.addStretch()
@@ -809,10 +908,13 @@ class Hub(QMainWindow):
         return row
 
     def arrange_rows(self):
-        for row, breakpoint in self.adaptive_rows:
+        for row, breakpoint in list(self.adaptive_rows):
             direction = QBoxLayout.TopToBottom if self.width() < breakpoint else QBoxLayout.LeftToRight
-            if row.direction() != direction:
-                row.setDirection(direction)
+            try:
+                if row.direction() != direction:
+                    row.setDirection(direction)
+            except RuntimeError:
+                self.adaptive_rows.remove((row, breakpoint))
 
     @staticmethod
     def copy_label(text, role):
@@ -856,7 +958,7 @@ class Hub(QMainWindow):
 
     def add_product_card(self, layout, product, compact=False):
         frame=QFrame(objectName="card"); frame.setMinimumWidth(245); box=QVBoxLayout(frame); box.setContentsMargins(16,16,16,16); box.setSpacing(12)
-        box.addWidget(Cover(None, 82 if compact else 122, product["id"] + ".png"))
+        box.addWidget(Cover(product["id"] + "-surface.svg", 110 if compact else 150, product["id"] + ".png"))
         row=QHBoxLayout(); row.addStretch(); state=QLabel("",objectName="muted"); self.product_badges=getattr(self,"product_badges",{}); self.product_badges.setdefault(product["id"], []).append(state); row.addWidget(state); box.addLayout(row)
         tagline,description=meta(product)
         name=QLabel(product["name"],objectName="productTitle"); box.addWidget(name); tag=self.copy_label(tagline,"eyebrow"); box.addWidget(tag)
@@ -866,6 +968,9 @@ class Hub(QMainWindow):
         detail=QPushButton(tr("details"),objectName="secondary"); detail.clicked.connect(lambda checked=False,p=product:self.show_product_detail(p)); actions.addWidget(detail,1); box.addLayout(actions)
         self.product_cards = getattr(self, "product_cards", {})
         self.product_cards.setdefault(product["id"], []).append((main, version))
+        if not compact:
+            self.catalog_tiles[product["id"]] = (frame, product)
+        main.setIcon(ui_icon("play" if self.is_installed(product) else "download", "#171717"))
         layout.addWidget(frame,1)
 
     def page_home(self):
@@ -896,6 +1001,18 @@ class Hub(QMainWindow):
         art = Cover("hub-universe.svg", 180)
         hb.addWidget(art, 2)
         box.addWidget(hero)
+        stats = self.adaptive_row(900)
+        for icon, title, value in (("catalog", tr("apps"), str(len(PRODUCTS))), ("library", tr("games"), str(len(GAMES))), ("shield", tr("integrity_title"), "SHA-256")):
+            panel = QFrame(objectName="stat")
+            content = QHBoxLayout(panel)
+            content.setContentsMargins(14, 12, 14, 12)
+            content.addWidget(self.icon_label(icon, "#DCC574", 22))
+            copy = QVBoxLayout()
+            copy.addWidget(self.copy_label(value, "statValue"))
+            copy.addWidget(self.copy_label(title, "muted"))
+            content.addLayout(copy, 1)
+            stats.addWidget(panel, 1)
+        box.addLayout(stats)
         section=self.adaptive_row(880); section.addWidget(QLabel(tr("featured"),objectName="section")); section.addStretch(); all_btn=QPushButton(tr("view")); all_btn.clicked.connect(lambda:self.navigate(1)); section.addWidget(all_btn); box.addLayout(section)
         cards = self.adaptive_row(945)
         for p in PRODUCTS: self.add_product_card(cards,p,compact=True)
@@ -904,7 +1021,14 @@ class Hub(QMainWindow):
         return self.scroll(page)
 
     def page_catalog(self):
-        page, box = self.page_base(tr("catalog"), tr("catalog"), "")
+        page, box = self.page_base(self.wc("workspace"), tr("catalog"), self.wc("quick"))
+        self.catalog_tiles = {}
+        self.catalog_search = QLineEdit()
+        self.catalog_search.setPlaceholderText(self.wc("search") + "  Ctrl+K")
+        self.catalog_search.setClearButtonEnabled(True)
+        self.catalog_search.setAccessibleName(self.wc("search"))
+        self.catalog_search.textChanged.connect(self.search_catalog)
+        box.addWidget(self.catalog_search)
         tabs = self.adaptive_row(880)
         self.catalog_filters = []
         for index, label in enumerate((tr("view"), tr("apps"), tr("games"))):
@@ -939,6 +1063,9 @@ class Hub(QMainWindow):
             self.catalog_sections.append(section)
             box.addWidget(section)
         box.addStretch()
+        self.catalog_empty = self.copy_label(self.wc("no_results"), "body")
+        box.insertWidget(box.count() - 1, self.catalog_empty)
+        self.catalog_empty.hide()
         self.filter_catalog(0)
         return self.scroll(page)
 
@@ -947,8 +1074,6 @@ class Hub(QMainWindow):
         self.catalog_selection = selection
         for index, button in enumerate(self.catalog_filters):
             button.setChecked(index == selection)
-        if previous == selection:
-            return
         self.stop_page_animation()
         visible = []
         for index, section in enumerate(self.catalog_sections, 1):
@@ -960,9 +1085,18 @@ class Hub(QMainWindow):
         if isinstance(page, QScrollArea) and self.stack.currentIndex() == 1:
             page.widget().layout().activate()
             page.verticalScrollBar().setValue(0)
-            if self.state.get("motion", True):
-                for section in visible:
-                    PageTransition(section, QPixmap(), duration=155, opacity=0.28)
+        self.search_catalog(self.catalog_search.text())
+
+    def search_catalog(self, text):
+        query = text.casefold().strip()
+        count = 0
+        for tile, item in self.catalog_tiles.values():
+            selected = self.catalog_selection in (0, 1 if item in PRODUCTS else 2)
+            matches = query in " ".join((item["name"], *meta(item))).casefold()
+            tile.setVisible(matches and selected)
+            count += bool(matches and selected)
+        if hasattr(self, "catalog_empty"):
+            self.catalog_empty.setVisible(count == 0)
 
     def add_game_card(self, layout, game):
         frame = QFrame(objectName="card")
@@ -988,6 +1122,7 @@ class Hub(QMainWindow):
         detail = QPushButton(tr("details"))
         detail.clicked.connect(lambda checked=False: self.show_game_detail(game))
         box.addWidget(detail)
+        self.catalog_tiles[game["id"]] = (frame, game)
         layout.addWidget(frame, 1)
 
     def page_library(self):
@@ -1013,11 +1148,29 @@ class Hub(QMainWindow):
         heading.addLayout(details, 3)
         heading.addWidget(Cover("hub-collection.svg", 128), 2)
         box.addWidget(hero)
+        tools = self.adaptive_row(1000)
+        self.library_search = QLineEdit()
+        self.library_search.setClearButtonEnabled(True)
+        self.library_search.setPlaceholderText(self.wc("search"))
+        self.library_search.textChanged.connect(lambda text: self.set_library_option("query", text))
+        tools.addWidget(self.library_search, 2)
+        for option, values in (("filter", ("all", "favorites", "apps", "games")), ("sort", ("recent", "name"))):
+            combo = QComboBox()
+            for value in values:
+                combo.addItem(tr(value) if value in ("apps", "games") else self.wc(value), value)
+            combo.setAccessibleName(self.wc("favorites") if option == "filter" else self.wc("recent"))
+            combo.currentIndexChanged.connect(lambda index, c=combo, key=option: self.set_library_option(key, c.currentData()))
+            tools.addWidget(combo, 1)
+        box.addLayout(tools)
         self.library_area = QVBoxLayout()
         self.library_area.setSpacing(12)
         box.addLayout(self.library_area)
         box.addStretch()
         return self.scroll(page)
+
+    def set_library_option(self, key, value):
+        setattr(self, "library_" + key, value)
+        self.refresh_library()
 
     def page_news(self):
         page = QWidget(objectName="page")
@@ -1097,6 +1250,14 @@ class Hub(QMainWindow):
             self.save_state()
         motion.toggled.connect(save_motion)
         preference_content.addWidget(motion, 0, Qt.AlignLeft)
+        intro = QPushButton(self.wc("intro_toggle"), objectName="segment")
+        intro.setCheckable(True)
+        intro.setChecked(self.state["intro"])
+        def set_intro(enabled):
+            self.state["intro"] = enabled
+            self.save_state()
+        intro.toggled.connect(set_intro)
+        preference_content.addWidget(intro, 0, Qt.AlignLeft)
         box.addWidget(preferences)
 
         updates, update_content = self.section_panel(tr("updates"), "updates")
@@ -1128,16 +1289,113 @@ class Hub(QMainWindow):
         support_content.addWidget(self.copy_label(tr("support_desc"), "body"))
         actions = self.adaptive_row(1050)
         for label, url in (
-            (tr("support_email"), "https://github.com/d4rv1n17/Enigma-Cube/issues/new/choose"),
+            (tr("support_email"), "https://github.com/d4rv1n17/Enigma-Hub/issues/new"),
             (tr("open_site"), "https://enigmastudioo.com"),
         ):
             button = QPushButton(label, objectName="secondary")
             button.clicked.connect(lambda checked=False, link=url: webbrowser.open(link))
             actions.addWidget(button)
         support_content.addLayout(actions)
+        diagnostics = QPushButton(self.wc("diagnostics"), objectName="secondary")
+        diagnostics.setIcon(ui_icon("shield"))
+        diagnostics.clicked.connect(self.export_diagnostics)
+        support_content.addWidget(diagnostics, 0, Qt.AlignLeft)
+        support_content.addWidget(self.copy_label(self.wc("diagnostics_note"), "muted"))
         box.addWidget(support)
+        storage, storage_content = self.section_panel(self.wc("cache"), "folder")
+        storage_content.addWidget(self.copy_label(self.wc("cache_note"), "body"))
+        clear = QPushButton(self.wc("cache"), objectName="secondary")
+        clear.clicked.connect(self.clear_downloads)
+        storage_content.addWidget(clear, 0, Qt.AlignLeft)
+        box.addWidget(storage)
         box.addStretch()
         return self.scroll(page)
+
+    def clear_downloads(self):
+        if self.product_busy():
+            self.status_message(tr("running"))
+            return
+        dialog, content = self.dialog_panel(self.wc("cache"), self.wc("cache_note"), "folder")
+        self.dialog_actions(dialog, content, self.wc("cache"), cancel=True)
+        if self.present_dialog(dialog) != QDialog.Accepted:
+            return
+        try:
+            folder = APPDATA / "downloads"
+            reject_reparse(folder)
+            count = 0
+            for file in folder.glob("*"):
+                if file.is_file() and file.suffix in (".exe", ".part"):
+                    reject_reparse(file)
+                    file.unlink()
+                    count += 1
+            self.status_message(self.wc("success") + f" · {count}")
+        except (OSError, ValueError) as error:
+            self.notify(tr("failed"), str(error))
+
+    def export_diagnostics(self):
+        picker = QFileDialog(self, self.wc("diagnostics"), str(Path.home() / "EnigmaHub-diagnostics.json"))
+        picker.setOption(QFileDialog.DontUseNativeDialog)
+        picker.setAcceptMode(QFileDialog.AcceptSave)
+        picker.setNameFilter("JSON (*.json)")
+        picker.setDefaultSuffix("json")
+        dark_caption(picker)
+        if picker.exec_() == QDialog.Accepted and picker.selectedFiles():
+            try:
+                report = {"hub": HUB_VERSION, "python": sys.version.split()[0], "platform": sys.platform, "language": Hub.lang, "installed_versions": self.state["installed"], "recent_operations": self.state["history"][-30:]}
+                Path(picker.selectedFiles()[0]).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+                self.status_message(self.wc("success"))
+            except OSError as error:
+                self.notify(tr("failed"), str(error))
+        picker.deleteLater()
+
+    def show_activity(self):
+        dialog, content = self.dialog_panel(self.wc("activity"), icon="activity")
+        dialog.resize(650, 520)
+        panel = QWidget()
+        timeline = QVBoxLayout(panel)
+        timeline.setContentsMargins(0, 0, 0, 0)
+        timeline.setSpacing(10)
+        if self.product_busy():
+            timeline.addWidget(self.copy_label(tr("running"), "eyebrow"))
+        for item in reversed(self.state["history"][-50:]):
+            card, row = self.section_panel("", None)
+            header = QHBoxLayout()
+            header.addWidget(self.icon_label("check" if item["status"] == "success" else "info", "#DCC574"))
+            header.addWidget(self.copy_label(item["name"], "releaseName"), 1)
+            row.addLayout(header)
+            action = workspace_copy(item["action"], Hub.lang) if item["action"] in ("launch", "install", "update", "remove", "verify") else item["action"]
+            row.addWidget(self.copy_label(action + " · " + self.wc("success" if item["status"] == "success" else "failed") + " · " + item["date"].replace("T", " ")[:16], "muted"))
+            timeline.addWidget(card)
+        if not self.state["history"]:
+            timeline.addWidget(self.copy_label(self.wc("activity_empty"), "body"))
+        timeline.addStretch()
+        content.addWidget(self.scroll(panel), 1)
+        self.dialog_actions(dialog, content, "OK")
+        self.present_dialog(dialog)
+
+    def locate_product(self, product):
+        if self.product_busy():
+            return
+        selected = self.pick_path(self.wc("locate"), self.state["paths"][product["id"]], False)
+        if not selected:
+            return
+        path = Path(selected)
+        if path.name.casefold() != product["exe"].casefold():
+            self.notify(tr("failed"), product["exe"])
+            return
+        self.state["paths"][product["id"]] = str(path.parent)
+        self.state["installed"].pop(product["id"], None)
+        self.state["hashes"].pop(product["id"], None)
+        self.save_state()
+        self.refresh_product_states()
+
+    def open_product_folder(self, product):
+        folder = Path(self.state["paths"][product["id"]])
+        if folder.is_dir():
+            try:
+                os.startfile(folder)
+            except OSError as error:
+                self.notify(tr("failed"), str(error))
 
     def is_installed(self, product):
         folder=Path(self.state["paths"][product["id"]]); exe=folder/product["exe"]
@@ -1159,7 +1417,11 @@ class Hub(QMainWindow):
             for badge in getattr(self,"product_badges",{}).get(p["id"], []):
                 badge.setText(tr("installed") if installed else tr("not_installed"))
             if p["id"] in getattr(self,"product_cards",{}):
-                for main,version in self.product_cards[p["id"]]:main.setText(tr("launch") if installed else tr("install")); version.setText(f"{tr('release')}  {self.state['installed'].get(p['id'], p['version'])}  ·  Windows")
+                for main,version in self.product_cards[p["id"]]:
+                    main.setText(tr("launch") if installed else tr("install"))
+                    main.setIcon(ui_icon("play" if installed else "download", "#171717"))
+                    displayed = self.state["installed"].get(p["id"], "—") if installed else self.latest_versions.get(p["id"], p["version"])
+                    version.setText(f"{tr('release')}  {displayed}  ·  Windows")
             for control in self.product_controls.get(p["id"], []):
                 control.setVisible(installed)
             for label in self.path_labels.get(p["id"], []):
@@ -1179,13 +1441,17 @@ class Hub(QMainWindow):
             return
         apps = [product for product in PRODUCTS if self.is_installed(product)]
         games = [game for game in GAMES if self.find_game_exe(game)]
-        groups = (("apps", apps), ("games", games))
-        signature = tuple((item["id"], self.state["installed"].get(item["id"])) for _, entries in groups for item in entries)
+        def included(item, kind):
+            return (self.library_filter in ("all", kind) or self.library_filter == "favorites" and item["id"] in self.state["favorites"]) and self.library_query.casefold().strip() in " ".join((item["name"], *meta(item))).casefold()
+        def order(item):
+            return self.state["recent"].get(item["id"], "") if self.library_sort == "recent" else item["name"].casefold()
+        groups = tuple((key, sorted([item for item in entries if included(item, key)], key=order, reverse=self.library_sort == "recent")) for key, entries in (("apps", apps), ("games", games)))
+        signature = (Hub.lang, self.library_filter, self.library_query, self.library_sort, tuple(self.state["favorites"]), tuple((item["id"], self.state["installed"].get(item["id"]), self.state["recent"].get(item["id"]), self.state["paths"].get(item["id"])) for _, entries in groups for item in entries))
         if signature == getattr(self, "library_signature", None):
             return
         self.library_signature = signature
-        self.library_heading.setText(tr("installed") if signature else tr("no_products"))
-        for badge, (key, entries) in zip(self.library_counts, groups):
+        self.library_heading.setText(self.wc("quick"))
+        for badge, (key, entries) in zip(self.library_counts, (("apps", apps), ("games", games))):
             badge.setText(f"{len(entries)}  {tr(key)}")
         while self.library_area.count():
             widget = self.library_area.takeAt(0).widget()
@@ -1198,7 +1464,22 @@ class Hub(QMainWindow):
             self.library_area.addWidget(self.copy_label(tr(key), "section"))
             for item in entries:
                 self.library_area.addWidget(self.library_entry(item, is_app=key == "apps"))
-        if not signature:
+        if not any(entries for _, entries in groups):
+            if not apps and not games:
+                panel, content = self.section_panel(self.wc("connect"), "library")
+                content.addWidget(self.copy_label(tr("no_products"), "body"))
+                for product in PRODUCTS:
+                    row = self.adaptive_row(1020)
+                    row.addWidget(self.asset_image(product["id"] + ".png", 35))
+                    row.addWidget(self.copy_label(product["name"], "releaseName"), 1)
+                    locate = QPushButton(self.wc("locate"), objectName="secondary")
+                    locate.setIcon(ui_icon("search"))
+                    locate.clicked.connect(lambda checked=False, p=product: self.locate_product(p))
+                    row.addWidget(locate)
+                    content.addLayout(row)
+                self.library_area.addWidget(panel)
+            else:
+                self.library_area.addWidget(self.copy_label(self.wc("no_results"), "body"))
             explore = QPushButton(tr("explore"), objectName="primary")
             explore.setIcon(ui_icon("catalog", "#141414"))
             explore.clicked.connect(lambda: self.navigate(1))
@@ -1206,10 +1487,10 @@ class Hub(QMainWindow):
 
     def library_entry(self, item, is_app):
         tile = QFrame(objectName="libraryEntry")
-        row = QHBoxLayout(tile)
+        row = self.adaptive_row(980, tile)
         row.setContentsMargins(12, 12, 14, 12)
         row.setSpacing(14)
-        art = Cover(None, 100, item["id"] + ".png") if is_app else Cover(item["id"] + "-cover.webp", 100)
+        art = Cover(item["id"] + "-surface.svg", 100, item["id"] + ".png") if is_app else Cover(item["id"] + "-cover.webp", 100)
         art.setFixedWidth(132)
         row.addWidget(art, 0, Qt.AlignTop)
         info = QVBoxLayout()
@@ -1218,13 +1499,18 @@ class Hub(QMainWindow):
         subtitle, description = meta(item)
         info.addWidget(self.copy_label(subtitle, "eyebrow"))
         info.addWidget(self.copy_label(description, "body"))
+        recent = self.state["recent"].get(item["id"])
+        if recent:
+            info.addWidget(self.copy_label(self.wc("recent") + " · " + recent.replace("T", " ")[:16], "muted"))
         if is_app:
-            version = self.state["installed"].get(item["id"], item["version"])
+            version = self.state["installed"].get(item["id"], "—")
             info.addWidget(self.copy_label(f"{tr('release')}  {version}  ·  Windows", "muted"))
         row.addLayout(info, 1)
         actions = QVBoxLayout()
+        favorite = self.favorite_button(item)
+        actions.addWidget(favorite, 0, Qt.AlignRight)
         launch = QPushButton(tr("launch"), objectName="primary")
-        launch.setIcon(ui_icon("external", "#141414"))
+        launch.setIcon(ui_icon("play", "#141414"))
         launch_action = self.launch_product if is_app else self.launch_game
         launch.clicked.connect(lambda: launch_action(item))
         actions.addWidget(launch)
@@ -1274,9 +1560,27 @@ class Hub(QMainWindow):
 
     def change_language(self, code):
         if not code or code==Hub.lang:return
-        self.state["lang"]=code; self.save_state(); self.notify(tr("settings"),TEXT[code]["language_note"]); self.close()
-        restart=[sys.executable] if getattr(sys,"frozen",False) else [sys.executable,str(Path(__file__).resolve())]
-        subprocess.Popen(restart)
+        if self.product_busy():
+            self.status_message(tr("running"))
+            return
+        index = min(self.stack.currentIndex(), 4)
+        self.stop_page_animation()
+        old = self.takeCentralWidget()
+        self.state["lang"] = code
+        Hub.lang = code
+        self.save_state()
+        self.adaptive_rows = []
+        for name in ("path_labels", "product_controls", "product_cards", "product_badges", "detail_pages", "game_detail_pages"):
+            setattr(self, name, {})
+        self.library_signature = None
+        self.catalog_selection = None
+        self.library_query, self.library_filter, self.library_sort = "", "all", "recent"
+        self.build_shell()
+        self.pages = [self.page_home(), self.page_catalog(), self.page_library(), self.page_news(), self.page_settings()]
+        for page in self.pages:
+            self.stack.addWidget(page)
+        self.navigate(index, animate=False)
+        old.deleteLater()
 
     def product_busy(self):
         return self.closing or any(isinstance(worker, ProductWorker) and worker.isRunning() for worker in self.workers)
@@ -1287,7 +1591,10 @@ class Hub(QMainWindow):
         if self.is_installed(product):self.notify(tr("installation"),tr("folder_installed"));return
         chosen = self.pick_path(tr("choose_title"), self.state["paths"][product["id"]], directory=True)
         if chosen:
-            self.state["paths"][product["id"]]=str(Path(chosen)/product["folder"]); self.save_state()
+            target = Path(chosen)
+            if target.name.casefold() != product["folder"].casefold():
+                target /= product["folder"]
+            self.state["paths"][product["id"]]=str(target); self.save_state()
             self.refresh_product_states()
 
     def primary_product_action(self,product):
@@ -1299,7 +1606,9 @@ class Hub(QMainWindow):
     def launch_product(self,product):
         exe=Path(self.state["paths"][product["id"]])/product["exe"]
         if not exe.is_file():self.notify(product["name"],tr("unsupported"));return
-        try:subprocess.Popen([str(exe)],cwd=str(exe.parent))
+        try:
+            subprocess.Popen([str(exe)],cwd=str(exe.parent))
+            self.record_activity(product, "launch")
         except OSError as error:self.notify(tr("failed"),str(error))
 
     def start_task(self,product,action):
@@ -1325,7 +1634,7 @@ class Hub(QMainWindow):
         self.progress.setAccessibleName(tr("running"))
         self.statusBar().addPermanentWidget(self.task_strip)
         self.status_message(tr("running"))
-        worker=ProductWorker(product,action,self.state["paths"][product["id"]]); worker.progress.connect(self.task_progress); worker.done.connect(lambda a,v,e,d,p=product:self.task_done(p,a,v,e,d)); worker.finished.connect(lambda:self.workers.remove(worker) if worker in self.workers else None); self.workers.append(worker); worker.start()
+        worker=ProductWorker(product,action,self.state["paths"][product["id"]],self.state["hashes"].get(product["id"])); worker.progress.connect(self.task_progress); worker.done.connect(lambda a,v,e,d,p=product:self.task_done(p,a,v,e,d)); worker.finished.connect(lambda:self.workers.remove(worker) if worker in self.workers else None); self.workers.append(worker); worker.start()
 
     def status_message(self,message):self.statusBar().showMessage(message,5000)
 
@@ -1350,10 +1659,19 @@ class Hub(QMainWindow):
         self.statusBar().removeWidget(self.task_strip)
         self.task_strip.deleteLater()
         if error:
+            self.record_activity(product, action, "failed")
             self.notify(tr("failed"),error); self.status_message(error[:150]); return
+        self.record_activity(product, action)
+        if action == "verify":
+            self.notify(tr("integrity_title"), self.wc("verified"))
+            return
         if action=="remove":
+            self.state["hashes"].pop(product["id"], None)
             self.state["installed"].pop(product["id"],None); remove_shortcuts(product["name"]); self.notify(product["name"],tr("uninstalled").format(name=product["name"]))
         else:
+            executable = Path(directory) / product["exe"]
+            if executable.is_file():
+                self.state["hashes"][product["id"]] = digest_file(executable)
             self.state["paths"][product["id"]]=directory; self.state["installed"][product["id"]]=version; self.notify(product["name"],(tr("updated_ok").format(name=product["name"],version=version) if action=="update" else tr("installed_ok").format(name=product["name"]))+"\n\n"+tr("integrity"))
         self.save_state(); self.refresh_product_states()
 
@@ -1372,11 +1690,8 @@ class Hub(QMainWindow):
         page,box=self.page_base(tr("apps"),product["name"],meta(product)[0])
         back=QPushButton("←     "+tr("catalog")); back.clicked.connect(lambda:self.navigate(1)); box.addWidget(back,0,Qt.AlignLeft)
         tagline,description=meta(product); hero=QFrame(objectName="hero"); row=self.adaptive_row(1170, hero); row.setContentsMargins(25,23,25,23)
-        art = QFrame(objectName="art")
-        art.setFixedSize(200, 172)
-        artwork = QVBoxLayout(art)
-        artwork.addWidget(self.asset_image(product["id"] + ".png", 120), 0, Qt.AlignCenter)
-        row.addWidget(art)
+        art = Cover(product["id"] + "-surface.svg", 190, product["id"] + ".png")
+        row.addWidget(art, 1)
         info = QVBoxLayout()
         info.addWidget(self.copy_label(description, "subtitle"))
         version = self.copy_label("", "muted")
@@ -1403,6 +1718,14 @@ class Hub(QMainWindow):
         row.addLayout(info, 1)
         box.addWidget(hero)
         self.refresh_product_states()
+        management, tools = self.section_panel(tr("installation"), "settings")
+        for label, icon, callback in ((self.wc("locate"), "search", lambda: self.locate_product(product)), (self.wc("open_folder"), "folder", lambda: self.open_product_folder(product)), (self.wc("verify"), "shield", lambda: self.start_task(product, "verify"))):
+            button = QPushButton(label, objectName="secondary")
+            button.setIcon(ui_icon(icon))
+            button.clicked.connect(callback)
+            tools.addWidget(button, 0, Qt.AlignLeft)
+        tools.addWidget(self.copy_label(self.wc("verify_note"), "muted"))
+        box.addWidget(management)
         guide = QTextBrowser()
         guide.setOpenExternalLinks(True)
         guide.setMinimumHeight(360)
@@ -1506,6 +1829,7 @@ class Hub(QMainWindow):
                 os.startfile("steam://run/" + appid)
             else:
                 subprocess.Popen([str(result)], cwd=str(result.parent))
+            self.record_activity(game, "launch")
         except OSError as error:
             self.notify( tr("failed"), str(error))
 
@@ -1620,12 +1944,29 @@ class Hub(QMainWindow):
             excerpt = self.news_excerpt(item["body"])
             if excerpt:
                 story.addWidget(self.copy_label(excerpt, "body"))
-            link = QPushButton(tr("open_release").rstrip(" ↗"), objectName="secondary")
-            link.setIcon(ui_icon("external"))
-            link.clicked.connect(lambda checked=False, url=item["url"]: webbrowser.open(url))
+            link = QPushButton(self.wc("read"), objectName="secondary")
+            link.setIcon(ui_icon("news"))
+            link.clicked.connect(lambda checked=False, article=item: self.read_article(article))
             story.addWidget(link, 0, Qt.AlignLeft)
             row.addLayout(story, 1)
             self.news_content.addWidget(tile)
+
+    def read_article(self, item):
+        dialog, content = self.dialog_panel(item["title"], item["name"] + " · " + item["date"], "news")
+        dialog.resize(680, 560)
+        body = QTextBrowser()
+        document = body.document()
+        document.setDefaultStyleSheet("body { color:#DFDFDF; font-size:14px; } h1,h2,h3 { color:#F4DA7D; } a { color:#E8CA69; } td,th { padding:6px; }")
+        document.setMarkdown(item["body"], QTextDocument.MarkdownNoHTML)
+        body.setOpenLinks(False)
+        body.anchorClicked.connect(lambda url: webbrowser.open(url.toString()) if url.scheme() in ("https", "http") else None)
+        content.addWidget(body, 1)
+        release = QPushButton(tr("open_release"), objectName="secondary")
+        release.setIcon(ui_icon("external"))
+        release.clicked.connect(lambda: webbrowser.open(item["url"]))
+        content.addWidget(release, 0, Qt.AlignLeft)
+        self.dialog_actions(dialog, content, "OK")
+        self.present_dialog(dialog)
 
     def check_hub_update(self, manual=False):
         if self.closing or not getattr(sys, "frozen", False):
@@ -1692,16 +2033,20 @@ class Hub(QMainWindow):
     def show_update_results(self, versions, error, silent=False):
         if self.closing:
             return
+        self.latest_versions.update(versions)
+        self.refresh_product_states()
         rows = []
         for product in PRODUCTS:
             latest = versions.get(product["id"])
             installed = self.is_installed(product)
-            current = self.state["installed"].get(product["id"], product["version"]) if installed else None
+            current = self.state["installed"].get(product["id"], "—") if installed else None
             update = bool(current and latest and self.version_tuple(latest) > self.version_tuple(current))
             rows.append((product, current, latest, update))
-        if silent and not any(update for _, _, _, update in rows):
+        if silent:
+            if any(update for _, _, _, update in rows):
+                self.status_message(tr("update_available"))
             return
-        if error and not versions:
+        if error and not versions and not silent:
             self.notify(tr("updates"), error)
             return
 
@@ -1764,6 +2109,10 @@ class Hub(QMainWindow):
             self.stop_page_animation()
 
     def closeEvent(self, event):
+        if self.product_busy() and not self.closing:
+            self.status_message(tr("running"))
+            event.ignore()
+            return
         self.closing = True
         if any(worker.isRunning() for worker in self.workers):
             event.ignore()
@@ -1781,8 +2130,30 @@ def main():
     app.setOrganizationName("Enigma Studio")
     app.setStyle("Fusion")
     app.setFont(QFont("Segoe UI", 10))
+    identity = "EnigmaHub-" + hashlib.sha256(str(APPDATA).casefold().encode()).hexdigest()[:16]
+    client = QLocalSocket()
+    client.connectToServer(identity)
+    if client.waitForConnected(250):
+        client.write(b"activate")
+        client.flush()
+        client.waitForBytesWritten(250)
+        client.disconnectFromServer()
+        return 0
+    server = QLocalServer(app)
+    server.setSocketOptions(QLocalServer.UserAccessOption)
+    if not server.listen(identity):
+        return 1
     screen = app.screenAt(QCursor.pos()) or app.primaryScreen()
     window = Hub()
+    def activate_existing():
+        connection = server.nextPendingConnection()
+        if connection:
+            connection.disconnectFromServer()
+            connection.deleteLater()
+        window.showNormal()
+        window.raise_()
+        window.activateWindow()
+    server.newConnection.connect(activate_existing)
     available = screen.availableGeometry()
     window.resize(min(1040, available.width() - 24), min(625, available.height() - 46))
     dark_caption(window)
@@ -1790,7 +2161,8 @@ def main():
     motion = window.state.get("motion", True)
     intro = StartupIntro(Hub.lang, motion)
     center_on_screen(intro, screen)
-    intro.show()
+    if window.state["intro"]:
+        intro.show()
 
     def open_window():
         window.show()
@@ -1799,7 +2171,7 @@ def main():
         if motion:
             window.fade_page(window.stack.currentWidget())
 
-    QTimer.singleShot(1650 if motion else 450, open_window)
+    QTimer.singleShot((1900 if motion else 450) if window.state["intro"] else 0, open_window)
     return app.exec_()
 
 

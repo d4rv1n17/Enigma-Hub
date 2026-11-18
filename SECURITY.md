@@ -8,4 +8,4 @@ Published Windows builds are currently unsigned. SHA-256 verifies file integrity
 
 Dependency checks run weekly and on changes. They cover published package advisories and do not constitute a full audit of every native Qt component. Current Qt bindings ship Qt 5.15.2 on Windows.
 
-Use the latest published release. Current release 1.0.2 migrates the embedded Python runtime to Python 3.15 and rejects linked installer destinations.
+Use the latest published release. Release 1.0.2 migrated the embedded Python runtime to Python 3.15 and rejected linked installer destinations. Release 1.1.0 extends those target checks to product operations and clears incomplete downloads on failure. Its file-verification feature compares the main executable to a locally recorded baseline; it is not a full application-directory or malware scan.

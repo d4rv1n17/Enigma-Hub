@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import stat
 import subprocess
 import sys
 import tempfile
@@ -19,6 +18,8 @@ from PyQt5.QtWidgets import QApplication, QCheckBox, QFileDialog, QFrame, QHBoxL
 from enigma_hub import ROOT, STYLE, Cover, Hub, ui_icon, center_on_screen, dark_caption, create_shortcuts
 
 from hub_update import VERSION
+from hub_safety import reject_reparse
+from hub_experience import PREMIUM_STYLE
 KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\EnigmaHub"
 EXE = "EnigmaHub.exe"
 SETUP = "EnigmaHubSetup.exe"
@@ -31,18 +32,6 @@ def existing_install():
             return Path(winreg.QueryValueEx(key, "InstallLocation")[0])
     except OSError:
         return None
-
-
-def reject_reparse(path):
-    """Never install or remove files through a link or Windows junction."""
-    path = Path(path).absolute()
-    for entry in (path, *path.parents):
-        try:
-            info = entry.lstat()
-        except FileNotFoundError:
-            continue
-        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
-            raise ValueError("Choose a regular folder without links or junctions.")
 
 
 def validate_install_files(folder):
@@ -223,7 +212,7 @@ class Setup(QWidget):
         self.setMinimumSize(800, 570)
         self.resize(850, 590)
         check_path = (ROOT / "assets/setup-check.svg").as_posix()
-        self.setStyleSheet(STYLE + SETUP_STYLE.replace("assets/setup-check.svg", check_path))
+        self.setStyleSheet(STYLE + PREMIUM_STYLE + SETUP_STYLE.replace("assets/setup-check.svg", check_path))
         shell = QHBoxLayout(self)
         shell.setContentsMargins(0, 0, 0, 0)
         shell.setSpacing(0)

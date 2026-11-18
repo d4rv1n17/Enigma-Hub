@@ -1,0 +1,152 @@
+"""Workspace regressions with isolated settings and no live installs or requests."""
+import copy
+import io
+import hashlib
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from PyQt5.QtWidgets import QApplication, QDialog, QScrollArea
+from PyQt5.QtCore import QTimer
+import enigma_hub as hub
+
+APP = QApplication.instance() or QApplication([])
+APP.setStyle("Fusion")
+
+
+class WorkspaceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.directory = Path(self.temp.name)
+        self.patches = [patch.object(hub, "APPDATA", self.directory), patch.object(hub, "STATE_FILE", self.directory / "settings.json"), patch.object(hub.Hub, "load_news"), patch.object(hub.Hub, "check_updates"), patch.object(hub.Hub, "check_hub_update")]
+        for p in self.patches:
+            p.start()
+        self.window = hub.Hub()
+        self.window.show()
+        APP.processEvents()
+
+    def tearDown(self):
+        self.window.close()
+        self.window.deleteLater()
+        APP.processEvents()
+        for p in reversed(self.patches):
+            p.stop()
+        self.temp.cleanup()
+
+    def test_catalog_search_and_filter(self):
+        self.window.navigate(1, False)
+        self.window.catalog_search.setText("disk")
+        APP.processEvents()
+        visible = [key for key, (tile, _) in self.window.catalog_tiles.items() if not tile.isHidden()]
+        self.assertEqual(visible, ["disk"])
+        self.window.filter_catalog(2)
+        self.assertTrue(self.window.catalog_empty.isVisible())
+
+    def test_language_changes_in_place_across_all_pages(self):
+        for code in ("ru", "ro", "de", "es", "fr", "en"):
+            self.window.change_language(code)
+            for index in range(5):
+                self.window.navigate(index, False)
+                for width in (820, 1040, 1440):
+                    self.window.resize(width, 680)
+                    APP.processEvents()
+                    page = self.window.stack.currentWidget()
+                    self.assertIsInstance(page, QScrollArea)
+                    self.assertLessEqual(page.horizontalScrollBar().maximum(), 1, (code, index, width))
+            self.assertFalse(self.window.closing)
+            self.assertEqual(hub.Hub.lang, code)
+
+    def test_library_favorites_and_last_launch(self):
+        product = hub.PRODUCTS[0]
+        folder = self.directory / "cube"
+        folder.mkdir()
+        (folder / product["exe"]).write_bytes(b"fixture only")
+        self.window.state["paths"]["cube"] = str(folder)
+        self.window.state["favorites"] = ["cube"]
+        self.window.record_activity(product, "launch")
+        self.window.set_library_option("filter", "favorites")
+        self.window.navigate(2, False)
+        APP.processEvents()
+        self.assertIn("cube", self.window.state["recent"])
+        self.assertEqual(self.window.state["history"][-1]["action"], "launch")
+        self.window.set_library_option("query", "does not exist")
+        self.window.set_library_option("query", "")
+        self.window.resize(900, 640)
+        APP.processEvents()
+
+    def test_malformed_preferences_are_normalized(self):
+        hub.STATE_FILE.write_text(json.dumps({"installed": {"disk": []}, "recent": [], "hashes": False, "motion": "false", "favorites": {}, "history": [None]}))
+        state = self.window.load_state()
+        self.assertEqual(state["installed"], {})
+        self.assertEqual(state["history"], [])
+        self.assertIs(state["motion"], True)
+
+    def test_update_check_continues_after_first_product_failure(self):
+        worker = hub.UpdateCheckWorker()
+        results = []
+        worker.checked.connect(lambda versions, error: results.append((versions, error)))
+        with patch.object(hub, "urlopen", side_effect=[OSError("offline"), io.BytesIO(b'{"tag_name":"v9.0.0"}')]):
+            worker.run()
+        self.assertEqual(results[0][0], {"disk": "9.0.0"})
+        self.assertIn("offline", results[0][1])
+
+    def test_news_reader_renders_markdown_in_dialog(self):
+        def inspect():
+            dialog = APP.activeModalWidget()
+            self.assertIsInstance(dialog, QDialog)
+            dialog.accept()
+        QTimer.singleShot(30, inspect)
+        self.window.read_article({"title": "Release", "name": "Enigma Hub", "date": "2026-11-18", "body": "## New\n\n**Clear** release notes", "url": "https://github.com/d4rv1n17/Enigma-Hub/releases"})
+
+    def test_product_install_verify_and_remove_preserve_other_files(self):
+        payload = b"verified application fixture"
+        product = hub.PRODUCTS[1]
+        target = self.directory / "Enigma Disk"
+        release = {"tag_name": "v2.0.0", "assets": [{"name": product["asset"], "digest": "sha256:" + hashlib.sha256(payload).hexdigest(), "size": len(payload), "browser_download_url": "https://github.com/" + product["repo"] + "/releases/download/v2.0.0/" + product["asset"]}]}
+        with patch.object(hub, "urlopen", side_effect=[io.BytesIO(json.dumps(release).encode()), io.BytesIO(payload)]), patch.object(hub, "create_shortcuts"), patch.object(hub, "remove_shortcuts"):
+            results = []
+            worker = hub.ProductWorker(product, "install", target)
+            worker.done.connect(lambda *args: results.append(args))
+            worker.run()
+            self.assertEqual(results[0][2], "")
+            self.assertEqual((target / product["exe"]).read_bytes(), payload)
+            verify = hub.ProductWorker(product, "verify", target, hashlib.sha256(payload).hexdigest())
+            verify.done.connect(lambda *args: results.append(args))
+            verify.run()
+            self.assertEqual(results[-1][0:3], ("verify", "", ""))
+            personal = target / "user-settings.json"
+            personal.write_text("keep")
+            remove = hub.ProductWorker(product, "remove", target)
+            remove.run()
+            self.assertEqual(personal.read_text(), "keep")
+            self.assertFalse((target / product["exe"]).exists())
+
+    def test_bad_product_download_does_not_install_or_leave_partial(self):
+        product = hub.PRODUCTS[1]
+        release = {"tag_name": "v2.0.0", "assets": [{"name": product["asset"], "digest": "sha256:" + "0" * 64, "size": 3, "browser_download_url": "https://github.com/" + product["repo"] + "/releases/download/v2.0.0/" + product["asset"]}]}
+        target = self.directory / "bad"
+        results = []
+        with patch.object(hub, "urlopen", side_effect=[io.BytesIO(json.dumps(release).encode()), io.BytesIO(b"bad")]):
+            worker = hub.ProductWorker(product, "install", target)
+            worker.done.connect(lambda *args: results.append(args))
+            worker.run()
+        self.assertTrue(results[0][2])
+        self.assertFalse(target.exists())
+        self.assertEqual(list((self.directory / "downloads").iterdir()), [])
+
+    def test_all_product_and_game_details_fit_small_window(self):
+        self.window.state["motion"] = False
+        for item in hub.PRODUCTS + hub.GAMES:
+            if item in hub.PRODUCTS:
+                self.window.show_product_detail(item)
+            else:
+                self.window.show_game_detail(item)
+            self.window.resize(820, 600)
+            APP.processEvents()
+            self.assertLessEqual(self.window.stack.currentWidget().horizontalScrollBar().maximum(), 1, item["id"])
+
+
+if __name__ == "__main__":
+    unittest.main()
