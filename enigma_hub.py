@@ -2140,7 +2140,8 @@ def main():
         client.disconnectFromServer()
         return 0
     server = QLocalServer(app)
-    server.setSocketOptions(QLocalServer.UserAccessOption)
+    # Keep the native Windows pipe ACL. Qt 5's explicit UserAccessOption fails
+    # for packaged/restricted user tokens, preventing the whole app from starting.
     if not server.listen(identity):
         return 1
     screen = app.screenAt(QCursor.pos()) or app.primaryScreen()
