@@ -282,6 +282,20 @@ class WorkspaceTests(unittest.TestCase):
                 APP.processEvents()
                 self.assertLessEqual(self.window.stack.currentWidget().horizontalScrollBar().maximum(), 1, (language, index))
 
+    def test_external_update_refreshes_saved_version_and_disables_repeat_update(self):
+        product = hub.PRODUCTS[1]
+        folder = self.directory / "externally-updated"
+        folder.mkdir()
+        (folder / product["exe"]).write_bytes(b"fixture")
+        self.window.state["paths"]["disk"] = str(folder)
+        self.window.state["installed"]["disk"] = "1.0.0"
+        with patch.object(hub, "installed_version", return_value="2.0.0"):
+            self.window.latest_versions["disk"] = "2.0"
+            self.window.show_product_detail(product)
+            APP.processEvents()
+            self.assertEqual(self.window.state["installed"]["disk"], "2.0.0")
+            self.assertFalse(self.window.product_update_buttons["disk"][0].isEnabled())
+
 
 if __name__ == "__main__":
     unittest.main()

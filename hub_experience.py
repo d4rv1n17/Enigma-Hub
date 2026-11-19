@@ -1,5 +1,6 @@
 """Shared visual tokens and localized workspace controls."""
 COPY = {
+    "version_unknown": ("Could not determine the installed version. Reconnect the installed app or use its official installer.", "Не удалось определить установленную версию. Подключите приложение заново или используйте официальный установщик.", "Versiunea instalată nu a putut fi determinată. Reconectează aplicația.", "Installierte Version unbekannt. App erneut verbinden oder offiziellen Installer nutzen.", "No se pudo determinar la versión instalada. Vuelve a conectar la aplicación.", "Version installée inconnue. Reconnectez l’application ou utilisez l’installateur officiel."),
     "general": ("General", "Общие", "Generale", "Allgemein", "General", "Général"),
     "settings_intro": ("Your workspace, your preferences.", "Твоё пространство — твои настройки.", "Spațiul tău, preferințele tale.", "Dein Bereich, deine Einstellungen.", "Tu espacio, tus preferencias.", "Votre espace, vos préférences."),
     "motion_note": ("Smooth page transitions and artwork hover effects.", "Плавные переходы между страницами и эффекты иллюстраций.", "Tranziții line și efecte pentru ilustrații.", "Sanfte Seitenwechsel und Effekte für Grafiken.", "Transiciones suaves y efectos en ilustraciones.", "Transitions fluides et effets des illustrations."),

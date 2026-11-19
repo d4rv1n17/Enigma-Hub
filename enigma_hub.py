@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from hub_update import VERSION as HUB_VERSION, HubUpdateWorker, digest_file
 from hub_experience import copy as workspace_copy, PREMIUM_STYLE
 from hub_safety import reject_reparse
+from hub_products import installed_version, version_key
 
 from PyQt5.QtCore import Qt, QRectF, QSize, QThread, QTimer, QElapsedTimer, QVariantAnimation, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt5.QtGui import QColor, QCursor, QFont, QIcon, QIconEngine, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
@@ -257,10 +258,11 @@ class ProductWorker(QThread):
     transfer = pyqtSignal(int, int, float, int)
     done = pyqtSignal(str, str, str, str)
 
-    def __init__(self, product, action, install_dir, expected_hash=None):
+    def __init__(self, product, action, install_dir, expected_hash=None, current_version=None):
         super().__init__()
         self.product, self.action, self.install_dir = product, action, Path(install_dir)
         self.expected_hash = expected_hash
+        self.current_version = current_version
         self.cancellable = action in ("install", "update")
 
     def run(self):
@@ -286,6 +288,15 @@ class ProductWorker(QThread):
                 with urlopen(req, timeout=25) as resp:
                     release = json.loads(resp.read(2 * 1024 * 1024))
                 version = str(release.get("tag_name", "")).lstrip("v")
+                if not version_key(version):
+                    raise ValueError("Invalid product release version")
+                if self.action == "update":
+                    current = installed_version(self.product, self.install_dir)
+                    if not current and self.expected_hash and (self.install_dir / self.product["exe"]).is_file() and digest_file(self.install_dir / self.product["exe"]) == self.expected_hash:
+                        current = self.current_version
+                    if version_key(current) and version_key(version) <= version_key(current):
+                        self.done.emit("current", current, "", str(self.install_dir))
+                        return
                 wanted = self.product["asset"].format(version=version) if self.product["id"] == "cube" else self.product["asset"]
                 asset = next((a for a in release.get("assets", []) if a.get("name") == wanted), None)
                 if not asset:
@@ -300,6 +311,11 @@ class ProductWorker(QThread):
                 size = int(asset.get("size", 0))
                 if size <= 0 or size > (1500 * 1024 * 1024) or len(expected) != 64:
                     raise ValueError("Invalid release metadata")
+                if self.action == "update" and not version_key(current):
+                    if self.product["id"] == "disk" and (self.install_dir / self.product["exe"]).is_file() and digest_file(self.install_dir / self.product["exe"]) == expected:
+                        self.done.emit("current", version, "", str(self.install_dir))
+                        return
+                    raise ValueError(workspace_copy("version_unknown", Hub.lang))
                 downloads = APPDATA / "downloads"
                 reject_reparse(downloads)
                 downloads.mkdir(parents=True, exist_ok=True)
@@ -1642,7 +1658,11 @@ class Hub(QMainWindow):
 
     def is_installed(self, product):
         folder=Path(self.state["paths"][product["id"]]); exe=folder/product["exe"]
-        if exe.is_file(): return True
+        if exe.is_file():
+            detected = installed_version(product, folder)
+            if detected:
+                self.state["installed"][product["id"]] = detected
+            return True
         try:
             import winreg
             key=r"Software\Microsoft\Windows\CurrentVersion\Uninstall\EnigmaCube" if product["id"]=="cube" else r"Software\Microsoft\Windows\CurrentVersion\Uninstall\EnigmaDisk"
@@ -1650,6 +1670,9 @@ class Hub(QMainWindow):
                 location,_=winreg.QueryValueEx(handle,"InstallLocation")
             if (Path(location)/product["exe"]).is_file():
                 self.state["paths"][product["id"]]=location
+                detected = installed_version(product, Path(location))
+                if detected:
+                    self.state["installed"][product["id"]] = detected
                 return True
         except (ImportError,OSError): pass
         return False
@@ -1667,6 +1690,12 @@ class Hub(QMainWindow):
                     version.setText(f"{tr('release')}  {displayed}  ·  Windows")
             for control in self.product_controls.get(p["id"], []):
                 control.setVisible(installed)
+            for button in getattr(self, "product_update_buttons", {}).get(p["id"], []):
+                current = version_key(self.state["installed"].get(p["id"]))
+                latest = version_key(self.latest_versions.get(p["id"]))
+                current_release = bool(current and latest and current >= latest)
+                button.setText(tr("up_to_date") if current_release else tr("update"))
+                button.setEnabled(not self.product_busy() and not current_release)
             for label in self.path_labels.get(p["id"], []):
                 self.set_path_text(label, self.state["paths"][p["id"]])
         self.refresh_game_states(); self.refresh_library(); self.refresh_home_recent()
@@ -1841,7 +1870,7 @@ class Hub(QMainWindow):
         Hub.lang = code
         self.save_state()
         self.adaptive_rows = []
-        for name in ("path_labels", "product_controls", "product_cards", "product_badges", "detail_pages", "game_detail_pages"):
+        for name in ("path_labels", "product_controls", "product_cards", "product_badges", "detail_pages", "game_detail_pages", "product_update_buttons"):
             setattr(self, name, {})
         self.library_signature = None
         self.catalog_selection = None
@@ -1920,7 +1949,13 @@ class Hub(QMainWindow):
         self.progress.setAccessibleName(tr("running"))
         self.workspace_layout.addWidget(self.task_strip)
         self.status_message(tr("running"))
-        worker=ProductWorker(product,action,self.state["paths"][product["id"]],self.state["hashes"].get(product["id"])); worker.progress.connect(self.task_progress); worker.transfer.connect(self.transfer_progress); worker.done.connect(lambda a,v,e,d,p=product:self.task_done(p,a,v,e,d)); worker.finished.connect(lambda:self.workers.remove(worker) if worker in self.workers else None); self.workers.append(worker); self.active_product_worker = worker; worker.start()
+        worker=ProductWorker(product,action,self.state["paths"][product["id"]],self.state["hashes"].get(product["id"]),self.state["installed"].get(product["id"])); worker.progress.connect(self.task_progress); worker.transfer.connect(self.transfer_progress); worker.done.connect(lambda a,v,e,d,p=product:self.task_done(p,a,v,e,d)); worker.finished.connect(lambda:self.finish_product_worker(worker)); self.workers.append(worker); self.active_product_worker = worker; worker.start()
+
+    def finish_product_worker(self, worker):
+        if worker in self.workers:
+            self.workers.remove(worker)
+        if not self.closing:
+            self.refresh_product_states()
 
     def cancel_product_download(self):
         worker = getattr(self, "active_product_worker", None)
@@ -1963,6 +1998,13 @@ class Hub(QMainWindow):
         self.task_strip.hide()
         self.task_strip.deleteLater()
         self.active_product_worker = None
+        if action == "current":
+            self.state["installed"][product["id"]] = version
+            self.latest_versions.setdefault(product["id"], version)
+            self.save_state()
+            self.refresh_product_states()
+            self.status_message(product["name"] + " · " + tr("up_to_date"))
+            return
         if action == "cancelled":
             self.record_activity(product, self.active_task_action, "cancelled")
             self.status_message(self.wc("cancelled"))
@@ -2016,7 +2058,9 @@ class Hub(QMainWindow):
         folder.clicked.connect(lambda: self.choose_install_folder(product))
         actions.addWidget(folder)
         update = QPushButton(tr("update"), objectName="secondary")
-        update.clicked.connect(lambda: self.start_task(product, "update"))
+        update.clicked.connect(lambda: self.check_updates(include_hub=False))
+        self.product_update_buttons = getattr(self, "product_update_buttons", {})
+        self.product_update_buttons.setdefault(product["id"], []).append(update)
         actions.addWidget(update)
         remove = QPushButton(tr("remove"), objectName="danger")
         remove.clicked.connect(lambda: self.confirm_remove(product))
@@ -2332,8 +2376,8 @@ class Hub(QMainWindow):
             return
         self.close()
 
-    def check_updates(self,silent=False):
-        if not silent:
+    def check_updates(self,silent=False,include_hub=True):
+        if not silent and include_hub:
             self.check_hub_update(manual=True)
         if self.closing or any(isinstance(worker, UpdateCheckWorker) for worker in self.workers):
             return
@@ -2349,7 +2393,7 @@ class Hub(QMainWindow):
             latest = versions.get(product["id"])
             installed = self.is_installed(product)
             current = self.state["installed"].get(product["id"], "—") if installed else None
-            update = bool(current and latest and self.version_tuple(latest) > self.version_tuple(current))
+            update = bool(version_key(current) and version_key(latest) and version_key(latest) > version_key(current))
             rows.append((product, current, latest, update))
         if silent:
             if any(update for _, _, _, update in rows):
@@ -2385,11 +2429,12 @@ class Hub(QMainWindow):
                 action.clicked.connect(select)
                 header.addWidget(action)
             card_layout.addLayout(header)
-            status_key = "update_available" if update else ("up_to_date" if current else "not_installed_state")
+            status_key = "update_available" if update else ("up_to_date" if version_key(current) else "not_installed_state")
             status = QHBoxLayout()
             icon = "download" if update else ("check" if latest and current else "info")
             status.addWidget(self.icon_label(icon, "#F4CC0C" if update else "#BFBFBF", 16))
-            status.addWidget(self.copy_label(tr(status_key) if latest else failed_label, "eyebrow" if update else "releaseStatus"), 1)
+            status_text = self.wc("version_unknown") if current and not version_key(current) else tr(status_key)
+            status.addWidget(self.copy_label(status_text if latest else failed_label, "eyebrow" if update else "releaseStatus"), 1)
             card_layout.addLayout(status)
             content.addWidget(card)
         if error:
@@ -2404,9 +2449,7 @@ class Hub(QMainWindow):
 
     @staticmethod
     def version_tuple(value):
-        import re
-        parts = tuple(int(part) for part in re.findall(r"\d+", str(value))[:4])
-        return parts + (0,) * (4 - len(parts)) if parts else ()
+        return version_key(value)
 
     def toggle_auto_check(self):
         self.state["auto_check"]=not self.state.get("auto_check",True); self.save_state(); self.auto_check_button.setChecked(self.state["auto_check"])

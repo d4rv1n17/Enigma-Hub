@@ -26,6 +26,7 @@ Download **EnigmaHubSetup.exe** from [Releases](https://github.com/d4rv1n17/Enig
 - Per-monitor HiDPI awareness, fractional scaling and vector-rendered navigation icons, logos and decorative artwork.
 - A persistent transfer panel shows downloaded bytes, average speed and estimated download time. Downloads can be cancelled before installation starts; incomplete files are removed.
 - Preflight free-space checks before product downloads and installation.
+- Product updates read the installed EXE/registration version, recognize equivalent version formats, and skip downloading or reinstalling releases that are already installed (or older).
 - Home offers quick launch for the three most recently used products that are still installed.
 
 ## Development
