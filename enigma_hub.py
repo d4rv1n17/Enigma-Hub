@@ -20,6 +20,7 @@ from hub_update import VERSION as HUB_VERSION, HubUpdateWorker, digest_file
 from hub_experience import copy as workspace_copy, PREMIUM_STYLE
 from hub_safety import reject_reparse
 from hub_products import installed_version, version_key
+from hub_games import find_installed_game, valid_web_url
 
 from PyQt5.QtCore import Qt, QRectF, QSize, QThread, QTimer, QElapsedTimer, QVariantAnimation, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt5.QtGui import QColor, QCursor, QFont, QIcon, QIconEngine, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
@@ -267,6 +268,7 @@ class ProductWorker(QThread):
 
     def run(self):
         temporary = None
+        staged = None
         try:
             reject_reparse(self.install_dir)
             reject_reparse(self.install_dir / self.product["exe"])
@@ -408,8 +410,12 @@ class ProductWorker(QThread):
         except Exception as exc:
             self.done.emit(self.action, "", str(exc), str(self.install_dir))
         finally:
-            if temporary:
-                temporary.unlink(missing_ok=True)
+            for partial in (temporary, staged):
+                if partial:
+                    try:
+                        partial.unlink(missing_ok=True)
+                    except OSError as error:
+                        print(f"Partial file cleanup: {error}", file=sys.stderr)
 
 
 NEWS_FIELDS = ("name", "tag", "title", "body", "url", "date")
@@ -885,7 +891,7 @@ class Hub(QMainWindow):
 
     def load_state(self):
         try:
-            result = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            result = json.loads(STATE_FILE.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             result = {}
         if not isinstance(result, dict):
@@ -966,10 +972,31 @@ class Hub(QMainWindow):
         return button
 
     def save_state(self):
-        APPDATA.mkdir(parents=True, exist_ok=True)
         temporary = STATE_FILE.with_suffix(".tmp")
-        temporary.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
-        temporary.replace(STATE_FILE)
+        try:
+            APPDATA.mkdir(parents=True, exist_ok=True)
+            temporary.write_text(json.dumps(self.state, ensure_ascii=False, indent=2), encoding="utf-8")
+            temporary.replace(STATE_FILE)
+            self.last_save_error = None
+            return True
+        except OSError as error:
+            self.last_save_error = str(error)
+            print(f"Settings save: {error}", file=sys.stderr)
+            if not getattr(self, "save_warning_pending", False):
+                self.save_warning_pending = True
+                def warn():
+                    try:
+                        if not self.closing and self.last_save_error:
+                            self.notify(tr("failed"), self.wc("save_failed"))
+                    finally:
+                        self.save_warning_pending = False
+                QTimer.singleShot(0, warn)
+            return False
+        finally:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def dialog_panel(self, title, message="", icon=None):
         dialog = QDialog(self)
@@ -2144,32 +2171,21 @@ class Hub(QMainWindow):
             if bad_url or bad_path or (steam_id and (not steam_id.isascii() or not steam_id.isdecimal())):
                 problem.show()
                 return
+            previous = self.state["games"].get(game["id"])
             self.state["games"][game["id"]] = {"exe": path, "steam_app_id": steam_id, "store_url": url}
-            self.save_state()
-            dialog.accept()
+            if self.save_state():
+                dialog.accept()
+            elif previous is None:
+                self.state["games"].pop(game["id"], None)
+            else:
+                self.state["games"][game["id"]] = previous
 
         save.clicked.connect(save_game)
         if self.present_dialog(dialog) == QDialog.Accepted:
             self.refresh_product_states()
 
     def find_game_exe(self,game):
-        cfg=self.state["games"].get(game["id"],{}); custom=Path(cfg["exe"]) if cfg.get("exe") else None
-        if custom and custom.is_file():return custom
-        appid=str(cfg.get("steam_app_id",""))
-        if not appid.isdigit():return None
-        roots=[Path(os.environ.get("ProgramFiles(x86)",r"C:\Program Files (x86)"))/"Steam",Path(os.environ.get("ProgramFiles",r"C:\Program Files"))/"Steam"]
-        import re
-        for root in list(roots):
-            try:
-                raw=re.findall(r'"path"\s+"([^"]+)"',(root/"steamapps/libraryfolders.vdf").read_text(encoding="utf-8",errors="ignore")); roots.extend(Path(x.replace("\\\\","\\")) for x in raw)
-            except OSError:pass
-        for root in roots:
-            manifest=root/"steamapps"/f"appmanifest_{appid}.acf"
-            try:
-                data=manifest.read_text(encoding="utf-8",errors="ignore"); install=re.search(r'"installdir"\s+"([^"]+)"',data)
-                if install and (root/"steamapps/common"/install.group(1)).is_dir():return manifest
-            except OSError:pass
-        return None
+        return find_installed_game(self.state["games"].get(game["id"], {}))
 
     def launch_game(self,game):
         result = self.find_game_exe(game)
@@ -2188,13 +2204,13 @@ class Hub(QMainWindow):
 
     def game_link_label(self, game):
         configured = self.state["games"].get(game["id"], {}).get("store_url")
-        if configured or game["id"] == "twins-hunt":
+        if configured and valid_web_url(configured) or game["id"] == "twins-hunt":
             return STORE_LABELS[Hub.lang]
         return GAME_PAGE_LABELS[Hub.lang]
 
     def open_game_store(self, game):
         configured = self.state["games"].get(game["id"], {}).get("store_url")
-        webbrowser.open(configured or GAME_PAGES[game["id"]])
+        webbrowser.open(configured if configured and valid_web_url(configured) else GAME_PAGES[game["id"]])
 
     def show_game_detail(self,game):
         cache=getattr(self,"game_detail_pages",{})
@@ -2343,6 +2359,12 @@ class Hub(QMainWindow):
                 self.notify(tr("updates"), error)
             return
         if not release:
+            self.hub_release = None
+            if hasattr(self, "hub_update_button"):
+                self.statusBar().removeWidget(self.hub_update_button)
+                self.hub_update_button.hide()
+                self.hub_update_button.deleteLater()
+                del self.hub_update_button
             if manual:
                 self.notify(tr("updates"), "Enigma Hub " + HUB_VERSION + " · " + tr("up_to_date"))
             return
@@ -2361,6 +2383,9 @@ class Hub(QMainWindow):
             return
         try:
             release = self.hub_release
+            if release and version_key(release.get("version")) <= version_key(HUB_VERSION):
+                self.hub_update_ready(None, "", manual=True)
+                return
             if not release or digest_file(release["path"]) != release["sha256"]:
                 raise ValueError("Downloaded Hub update is missing or damaged.")
             target = Path(sys.executable).parent
@@ -2469,9 +2494,25 @@ class Hub(QMainWindow):
         if any(worker.isRunning() for worker in self.workers):
             event.ignore()
             self.centralWidget().setEnabled(False)
-            QTimer.singleShot(150, self.close)
+            self.hide()
+            QTimer.singleShot(150, lambda: self.close() if self.closing else None)
             return
         super().closeEvent(event)
+
+    def restore_window(self):
+        was_closing = self.closing
+        self.closing = False
+        self.centralWidget().setEnabled(True)
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+        self.raise_()
+        self.activateWindow()
+        if was_closing:
+            if not any(isinstance(worker, NewsWorker) and worker.isRunning() for worker in self.workers):
+                self.show_news(self.news_items)
+            self.check_hub_update()
 
 
 def main():
@@ -2505,9 +2546,7 @@ def main():
         if connection:
             connection.disconnectFromServer()
             connection.deleteLater()
-        window.showNormal()
-        window.raise_()
-        window.activateWindow()
+        window.restore_window()
     server.newConnection.connect(activate_existing)
     available = screen.availableGeometry()
     window.resize(min(1040, available.width() - 24), min(625, available.height() - 46))

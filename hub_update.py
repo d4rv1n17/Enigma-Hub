@@ -8,8 +8,9 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from PyQt5.QtCore import QThread, pyqtSignal
+from hub_safety import reject_reparse
 
-VERSION = "1.2.2"
+VERSION = "1.2.3"
 REPOSITORY = "d4rv1n17/Enigma-Hub"
 ASSET_NAME = "EnigmaHubSetup.exe"
 
@@ -62,12 +63,22 @@ def latest_installer():
 
 
 def download_installer(release, folder):
+    version_tuple(release["version"])
+    if not re.fullmatch(r"[a-fA-F0-9]{64}", str(release.get("sha256", ""))):
+        raise ValueError("Invalid Hub installer digest")
+    if not isinstance(release.get("size"), int) or not 0 < release["size"] < 512 * 1024 * 1024:
+        raise ValueError("Invalid Hub installer size")
+    if not str(release.get("url", "")).startswith(f"https://github.com/{REPOSITORY}/releases/download/"):
+        raise ValueError("Unexpected Hub installer address")
     folder = Path(folder) / release["version"]
+    reject_reparse(folder)
     folder.mkdir(parents=True, exist_ok=True)
     target = folder / ASSET_NAME
+    temporary = target.with_suffix(".part")
+    reject_reparse(target)
+    reject_reparse(temporary)
     if target.is_file() and digest_file(target) == release["sha256"]:
         return target
-    temporary = target.with_suffix(".part")
     try:
         total = 0
         request = Request(release["url"], headers={"User-Agent": "EnigmaHub/" + VERSION})

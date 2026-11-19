@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import winreg
 
 from PyQt5.QtCore import Qt, QThread, QPropertyAnimation, QEasingCurve, pyqtSignal
@@ -54,7 +55,53 @@ def shortcut_path():
     return Path(os.environ["APPDATA"]) / "Microsoft/Windows/Start Menu/Programs/Enigma Hub.lnk"
 
 
+REGISTRATION_FIELDS = ("DisplayName", "DisplayVersion", "Publisher", "InstallLocation", "DisplayIcon", "UninstallString", "QuietUninstallString", "NoModify", "NoRepair")
+
+
+def registration_snapshot():
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, KEY) as key:
+            values = {}
+            for name in REGISTRATION_FIELDS:
+                try:
+                    values[name] = winreg.QueryValueEx(key, name)
+                except FileNotFoundError:
+                    pass
+            return values
+    except FileNotFoundError:
+        return None
+
+
+def restore_registration(snapshot):
+    if snapshot is None:
+        try:
+            winreg.DeleteKey(winreg.HKEY_CURRENT_USER, KEY)
+        except FileNotFoundError:
+            pass
+        return
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, KEY) as key:
+        for name in REGISTRATION_FIELDS:
+            if name in snapshot:
+                value, kind = snapshot[name]
+                winreg.SetValueEx(key, name, 0, kind, value)
+            else:
+                try:
+                    winreg.DeleteValue(key, name)
+                except FileNotFoundError:
+                    pass
+
+
 def register(folder):
+    snapshot = registration_snapshot()
+    try:
+        write_registration(folder)
+    except Exception:
+        restore_registration(snapshot)
+        raise
+    return lambda: restore_registration(snapshot)
+
+
+def write_registration(folder):
     executable = str(folder / SETUP)
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, KEY) as key:
         fields = {
@@ -92,12 +139,13 @@ def install(folder, desktop=False, progress=lambda value: None):
     staged = {}
     backups = {}
     replaced = set()
+    registration_undo = None
     try:
         sources = {EXE: payload, SETUP: Path(sys.executable)}
         for index, (name, source) in enumerate(sources.items()):
             stage = folder / (name + ".new")
-            shutil.copy2(source, stage)
             staged[name] = stage
+            shutil.copy2(source, stage)
             progress(35 + index * 20)
         for name, stage in staged.items():
             target = folder / name
@@ -110,7 +158,7 @@ def install(folder, desktop=False, progress=lambda value: None):
             stage.replace(target)
             replaced.add(name)
         progress(75)
-        register(folder)
+        registration_undo = register(folder)
         create_shortcuts("Enigma Hub", folder / EXE)
         if desktop:
             start_link = shortcut_path()
@@ -128,6 +176,8 @@ def install(folder, desktop=False, progress=lambda value: None):
                 backups[name].replace(target)
             elif name in replaced and target.exists():
                 target.unlink()
+        if registration_undo:
+            registration_undo()
         raise
     finally:
         for stage in staged.values():
@@ -148,7 +198,14 @@ def uninstall(folder, progress=lambda value: None):
         raise ValueError("This folder is not an Enigma Hub installation.")
     # Only the two known installed executables are removed. User folders remain intact.
     for index, name in enumerate((EXE, SETUP)):
-        (folder / name).unlink(missing_ok=True)
+        for attempt in range(21):
+            try:
+                (folder / name).unlink(missing_ok=True)
+                break
+            except PermissionError as error:
+                if attempt == 20:
+                    raise RuntimeError("Close Enigma Hub and try removing it again.") from error
+                time.sleep(0.1)
         progress(35 + index * 25)
     (folder / MARKER).unlink()
     registered = existing_install()
@@ -441,6 +498,27 @@ class Setup(QWidget):
             event.accept()
 
 
+def cleanup_removal_helper():
+    """Remove only our detached copy after its Windows image handle closes."""
+    if not getattr(sys, "frozen", False):
+        return False
+    executable = Path(sys.executable).resolve()
+    folder = executable.parent
+    temporary = Path(tempfile.gettempdir()).resolve()
+    if executable.name != SETUP or folder.parent != temporary or not folder.name.startswith("EnigmaHub-remove-"):
+        return False
+    quote = lambda path: str(path).replace("'", "''")
+    script = (
+        f"Wait-Process -Id {os.getpid()} -Timeout 180 -ErrorAction SilentlyContinue; "
+        "for($attempt=0; $attempt -lt 40; $attempt++) { try { "
+        f"Remove-Item -LiteralPath '{quote(executable)}' -Force -ErrorAction Stop; "
+        f"Remove-Item -LiteralPath '{quote(folder)}' -ErrorAction SilentlyContinue; break "
+        "} catch { Start-Sleep -Milliseconds 500 } }"
+    )
+    subprocess.Popen(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script], creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--uninstall", action="store_true")
@@ -464,7 +542,7 @@ def main():
     if args.uninstall and getattr(sys, "frozen", False) and not args.detached:
         helper = Path(tempfile.mkdtemp(prefix="EnigmaHub-remove-")) / SETUP
         shutil.copy2(sys.executable, helper)
-        command = [str(helper), "--uninstall", "--detached", "--dir", str(folder)]
+        command = [str(helper), "--uninstall", "--detached", "--dir", str(folder), "--wait-pid", str(os.getpid())]
         if args.quiet:
             command.append("--quiet")
         subprocess.Popen(command)
@@ -480,11 +558,19 @@ def main():
                 subprocess.Popen([str(installed / EXE)], cwd=str(installed))
             return 0
         except Exception as error:
-            if args.launch and (normalize_target(folder) / EXE).is_file():
-                subprocess.Popen([str(normalize_target(folder) / EXE)], cwd=str(normalize_target(folder)))
+            if args.launch:
+                try:
+                    recovered = normalize_target(folder)
+                    if (recovered / EXE).is_file():
+                        subprocess.Popen([str(recovered / EXE)], cwd=str(recovered))
+                except (OSError, ValueError):
+                    pass
             log = Path(os.environ.get("APPDATA", tempfile.gettempdir())) / "EnigmaHub"
-            log.mkdir(parents=True, exist_ok=True)
-            (log / "update-error.log").write_text(str(error), encoding="utf-8")
+            try:
+                log.mkdir(parents=True, exist_ok=True)
+                (log / "update-error.log").write_text(str(error), encoding="utf-8")
+            except OSError:
+                print(str(error), file=sys.stderr)
             return 1
     configure_display()
     app = QApplication(sys.argv)
@@ -498,4 +584,12 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        exit_code = main()
+    finally:
+        if "--uninstall" in sys.argv and "--detached" in sys.argv:
+            try:
+                cleanup_removal_helper()
+            except OSError:
+                pass
+    sys.exit(exit_code)

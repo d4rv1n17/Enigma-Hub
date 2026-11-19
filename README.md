@@ -28,6 +28,9 @@ Download **EnigmaHubSetup.exe** from [Releases](https://github.com/d4rv1n17/Enig
 - Preflight free-space checks before product downloads and installation.
 - Product updates read the installed EXE/registration version, recognize equivalent version formats, and skip downloading or reinstalling releases that are already installed (or older).
 - Home offers quick launch for the three most recently used products that are still installed.
+- Steam discovery supports non-default client/library locations and requires a completed installation.
+- Failed settings writes preserve the previous file and show an error; UTF-8 BOM settings are supported.
+- Failed Hub installation restores prior files and registration. Detached removal helpers clean up their temporary executable after exit.
 
 ## Development
 
