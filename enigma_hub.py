@@ -21,7 +21,7 @@ from hub_experience import copy as workspace_copy, PREMIUM_STYLE
 from hub_safety import reject_reparse
 from hub_products import installed_version, version_key
 from hub_games import find_installed_game, valid_web_url
-from hub_ecosystem import LaunchBroker, running_product
+from hub_ecosystem import LaunchBroker, running_product, installed_hub_ready
 
 from PyQt5.QtCore import Qt, QRectF, QSize, QThread, QTimer, QElapsedTimer, QVariantAnimation, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt5.QtGui import QColor, QCursor, QFont, QIcon, QIconEngine, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
@@ -365,8 +365,17 @@ class ProductWorker(QThread):
                     if self.action == "update":
                         args.insert(1, "--update")
                     self.progress.emit(85, tr("progress_install"))
+                    setup_started = time.time()
                     result = subprocess.run(args, cwd=str(downloads), timeout=600, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
                     if result.returncode != 0:
+                        error_log = Path(os.environ.get('APPDATA', tempfile.gettempdir())) / 'EnigmaTimer/setup-error.log'
+                        try:
+                            if error_log.stat().st_mtime >= setup_started - 1:
+                                message = error_log.read_text(encoding='utf-8')[:8192].strip()
+                                if message:
+                                    raise RuntimeError(message)
+                        except OSError:
+                            pass
                         raise RuntimeError(f"Enigma Cube setup exited with code {result.returncode}")
                 else:
                     self.progress.emit(85, tr("progress_install"))
@@ -1958,6 +1967,16 @@ class Hub(QMainWindow):
 
     def start_task(self,product,action):
         if self.product_busy():
+            return
+        if action in ('install', 'update') and getattr(sys, 'frozen', False) and not installed_hub_ready():
+            messages = {
+                'en': 'Install or update Enigma Hub 1.3.0 or newer with EnigmaHubSetup.exe first, then reopen Hub from the Start menu. This unregistered copy cannot manage dependent product installations.',
+                'ru': 'Сначала установите или обновите Enigma Hub 1.3.0 или новее через EnigmaHubSetup.exe, затем откройте Hub из меню «Пуск». Запущенная незарегистрированная копия не может устанавливать зависимые приложения.',
+                'ro': 'Instalați Enigma Hub 1.3.0+ cu EnigmaHubSetup.exe, apoi deschideți Hub din meniul Start.',
+                'de': 'Installieren Sie Enigma Hub 1.3.0+ mit EnigmaHubSetup.exe und öffnen Sie Hub über das Startmenü.',
+                'es': 'Instala Enigma Hub 1.3.0+ con EnigmaHubSetup.exe y abre Hub desde el menú Inicio.',
+                'fr': 'Installez Enigma Hub 1.3.0+ avec EnigmaHubSetup.exe, puis ouvrez Hub depuis le menu Démarrer.'}
+            self.notify('Enigma Hub', messages[Hub.lang])
             return
         if action in ('install', 'update', 'remove'):
             try:

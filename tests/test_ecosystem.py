@@ -77,6 +77,23 @@ class BrokerTests(unittest.TestCase):
         self.assertTrue(running_product(sys.executable))
         self.assertFalse(running_product(Path(tempfile.gettempdir()) / 'not-an-enigma-exe.exe'))
 
+    @unittest.skipUnless(sys.platform == 'win32', 'Windows registration')
+    def test_registered_hub_requires_supported_marker_and_executable_version(self):
+        from hub_ecosystem import installed_hub_ready
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            exe = root / 'EnigmaHub.exe'
+            exe.write_bytes(b'fixture')
+            marker = root / '.enigma-hub-install.json'
+            marker.write_text(json.dumps(dict(product='Enigma Hub', version='1.3.0')))
+            with patch('winreg.OpenKey'), patch('winreg.QueryValueEx', return_value=(folder, 1)), \
+                    patch('hub_products.executable_version', return_value='1.3.0'):
+                self.assertTrue(installed_hub_ready())
+                with patch('hub_products.executable_version', return_value='1.2.3'):
+                    self.assertFalse(installed_hub_ready())
+                marker.write_text('{broken')
+                self.assertFalse(installed_hub_ready())
+
 
 class HubRoutingTests(unittest.TestCase):
     def setUp(self):
@@ -115,6 +132,16 @@ class HubRoutingTests(unittest.TestCase):
         with patch.object(self.window, 'launch_product') as launch:
             self.window.ecosystem_request(dict(product='disk', action='launch', exe=str(executable)))
             launch.assert_not_called()
+
+    def test_unregistered_packaged_hub_blocks_install_before_creating_worker(self):
+        with patch.object(sys, 'frozen', True, create=True), \
+                patch.object(self.hub, 'installed_hub_ready', return_value=False), \
+                patch.object(self.window, 'notify') as notify, patch.object(self.hub, 'ProductWorker') as worker:
+            for action in ('install', 'update'):
+                self.window.start_task(self.hub.PRODUCTS[0], action)
+            self.assertEqual(notify.call_count, 2)
+            self.assertIn('EnigmaHubSetup.exe', notify.call_args.args[1])
+            worker.assert_not_called()
 
     def test_running_product_cannot_be_updated_or_removed(self):
         with patch.object(self.hub, 'running_product', return_value=True), patch.object(self.window, 'notify') as notify, patch.object(self.hub, 'ProductWorker') as worker:

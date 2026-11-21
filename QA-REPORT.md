@@ -1,4 +1,14 @@
-# Enigma Hub 1.3.0 ecosystem verification
+# Enigma Hub 1.3.1 setup recovery verification
+
+Date: 2026-11-21 (client time).
+
+- Reproduced the missing prerequisite: an unregistered Output copy could offer a product update although no supported Hub was installed.
+- Product install/update now checks the registered installation marker and actual Hub executable version before downloading or starting a worker. Six-language messages explain installing Hub with EnigmaHubSetup.exe and reopening it from Start.
+- Cube 3.3.1 quiet setup returns a normal failure even when stderr is None or unusable. The original error is saved locally; Hub displays a fresh setup error rather than just exit code 1.
+- 66 Hub tests and 247 Cube tests passed, including the new prerequisite and missing-stderr regressions.
+- On the affected PC, Hub 1.3.0 was installed normally. Retrying the real Cube update through Hub succeeded: 3.2.1 to 3.3.0 in the previously selected installation folder, with SHA-256 verification and refreshed Hub state.
+
+## Previous 1.3.0 ecosystem verification
 
 Date: 2026-11-21. Windows x64; Python 3.15 / PyQt5; .NET SDK 10.0.401.
 

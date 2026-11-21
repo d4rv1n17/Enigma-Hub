@@ -11,6 +11,24 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
+def installed_hub_ready():
+    """Products must be able to find a supported installed Hub after setup exits."""
+    from pathlib import Path
+    from hub_products import executable_version, version_key
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                            r'Software\Microsoft\Windows\CurrentVersion\Uninstall\EnigmaHub') as key:
+            folder = Path(winreg.QueryValueEx(key, 'InstallLocation')[0])
+        marker = json.loads((folder / '.enigma-hub-install.json').read_text(encoding='utf-8'))
+        exe = folder / 'EnigmaHub.exe'
+        return (marker.get('product') == 'Enigma Hub' and
+                version_key(marker.get('version')) >= (1, 3, 0, 0) and exe.is_file() and
+                version_key(executable_version(exe)) >= (1, 3, 0, 0))
+    except (ImportError, OSError, ValueError, TypeError, AttributeError):
+        return False
+
+
 def running_product(executable):
     """Exact-path process check, including products started before this Hub."""
     import ctypes
