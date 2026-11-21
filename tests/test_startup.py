@@ -9,6 +9,48 @@ import unittest
 
 
 class StartupTests(unittest.TestCase):
+    def test_product_request_is_forwarded_to_existing_hub(self):
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as folder:
+            environment = dict(os.environ, APPDATA=folder)
+            script = """import os, json
+from pathlib import Path
+import enigma_hub as h
+from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QApplication
+original = h.Hub.__init__
+def initialize(self):
+    original(self)
+    QTimer.singleShot(7000, QApplication.instance().quit)
+h.Hub.__init__ = initialize
+h.Hub.load_news = lambda self: None
+h.Hub.check_updates = lambda *args, **kwargs: None
+h.Hub.check_hub_update = lambda *args, **kwargs: None
+h.Hub.ecosystem_request = lambda self, request: Path(os.environ['APPDATA'], 'request.json').write_text(json.dumps(request))
+raise SystemExit(h.main())
+"""
+            command = [sys.executable, '-c', script]
+            with (Path(folder) / 'process.log').open('w') as log:
+                first = subprocess.Popen(command, cwd=root, env=environment, stdout=log, stderr=log)
+                try:
+                    time.sleep(3)
+                    second = subprocess.run(command + ['--product', 'disk', '--action', 'launch', '--product-exe', 'C:/Apps/Enigma Disk/EnigmaDisk.exe'],
+                                            cwd=root, env=environment, stdout=log, stderr=log, timeout=10)
+                    self.assertEqual(second.returncode, 0)
+                    received = Path(folder) / 'request.json'
+                    deadline = time.monotonic() + 2
+                    while not received.exists() and time.monotonic() < deadline:
+                        time.sleep(.05)
+                    import json
+                    request = json.loads(received.read_text())
+                    self.assertEqual(request['product'], 'disk')
+                    self.assertEqual(request['action'], 'launch')
+                    self.assertEqual(request['exe'], 'C:/Apps/Enigma Disk/EnigmaDisk.exe')
+                    self.assertIsNone(first.poll())
+                finally:
+                    first.wait(timeout=12)
+            self.assertNotIn('Traceback', (Path(folder) / 'process.log').read_text())
+
     def test_reopening_activates_first_instance_without_exiting_it(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as folder:

@@ -1,4 +1,15 @@
-# Enigma Hub 1.2.3 verification
+# Enigma Hub 1.3.0 ecosystem verification
+
+Date: 2026-11-21. Windows x64; Python 3.15 / PyQt5; .NET SDK 10.0.401.
+
+- 64 Hub tests passed, including live loopback ticket validation, replay/wrong-product rejection, exact executable process detection, custom-path routing, tray actions, safe quitting and forwarding product launch requests to an already running Hub.
+- The complete Cube suite passed: 245 tests, including the changed settings action and packaged launch/update behavior.
+- The real C# HubLink source passed version/endpoint checks. Cross-process Python/C# checks accepted a Disk ticket and rejected replay and Cube tickets.
+- Hub 1.3.0, Cube 3.3.0 and Disk 2.1.0 application/installers built successfully. Disk's installer built without compiler warnings; app restore reported NU1900 because the sandbox could not fetch NuGet advisory data.
+- Real packaged Cube and Disk processes consumed Hub tickets, opened visible windows, continued running after the broker was shut down, and exited cleanly. Cube used an isolated data profile. No existing product install was replaced; no scan or timer was started. No Disk scheduled task was present or modified.
+- Release coordination and recovery requirements are recorded in [ECOSYSTEM.md](ECOSYSTEM.md). The dependent product releases must follow Hub 1.3.0, not precede it.
+
+## Previous 1.2.3 verification
 
 Date: 2026-11-19. Environment: Windows 11 x64, Python 3.15.0, PyQt5 5.15.11 / Qt 5.15.2.
 

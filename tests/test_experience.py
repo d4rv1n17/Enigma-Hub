@@ -209,7 +209,9 @@ class WorkspaceTests(unittest.TestCase):
         self.window.record_activity(product, "launch")
         self.assertEqual(self.window.home_recent.count(), 1)
         executable.unlink()
-        self.window.refresh_home_recent()
+        # A real registered installation elsewhere must not replace this fixture.
+        with patch('winreg.OpenKey', side_effect=FileNotFoundError):
+            self.window.refresh_home_recent()
         self.assertTrue(self.window.home_recent_panel.isHidden())
 
     def test_transfer_panel_reports_progress_and_safely_finishes_cancel(self):

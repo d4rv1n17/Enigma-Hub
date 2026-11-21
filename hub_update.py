@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 from PyQt5.QtCore import QThread, pyqtSignal
 from hub_safety import reject_reparse
 
-VERSION = "1.2.3"
+VERSION = "1.3.0"
 REPOSITORY = "d4rv1n17/Enigma-Hub"
 ASSET_NAME = "EnigmaHubSetup.exe"
 

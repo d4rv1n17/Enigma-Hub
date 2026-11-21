@@ -8,6 +8,9 @@ Download **EnigmaHubSetup.exe** from [Releases](https://github.com/d4rv1n17/Enig
 
 ## Features
 
+- **Unified ecosystem (1.3.0):** packaged Cube 3.3+ and Disk 2.1+ launch through Hub with one-use local launch tickets. Direct app shortcuts open Hub and then the selected product. No account or internet is required for installed products.
+- Hub manages product updates. Running apps are never killed to install an update; close the product before changing its installation. Closing Hub does not interrupt a running product. When applicable, the window closes to a quick-launch tray menu; **Quit Hub** exits without closing products.
+
 - Enigma Cube and Enigma Disk installation, launch, update, and removal.
 - Verified downloads using official release SHA-256 digests.
 - Local game launch and links to the official game pages and stores.

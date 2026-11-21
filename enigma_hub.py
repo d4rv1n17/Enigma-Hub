@@ -21,6 +21,7 @@ from hub_experience import copy as workspace_copy, PREMIUM_STYLE
 from hub_safety import reject_reparse
 from hub_products import installed_version, version_key
 from hub_games import find_installed_game, valid_web_url
+from hub_ecosystem import LaunchBroker, running_product
 
 from PyQt5.QtCore import Qt, QRectF, QSize, QThread, QTimer, QElapsedTimer, QVariantAnimation, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt5.QtGui import QColor, QCursor, QFont, QIcon, QIconEngine, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
@@ -29,7 +30,7 @@ from PyQt5.QtNetwork import QLocalServer, QLocalSocket
 from PyQt5.QtWidgets import (
     QApplication, QBoxLayout, QDialog, QFileDialog, QFrame,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMenu, QPushButton, QProgressBar, QTextBrowser,
-    QScrollArea, QStackedWidget, QVBoxLayout, QWidget, QSizePolicy, QComboBox, QShortcut, QAbstractButton,
+    QScrollArea, QStackedWidget, QVBoxLayout, QWidget, QSizePolicy, QComboBox, QShortcut, QAbstractButton, QSystemTrayIcon,
 )
 
 ROOT = Path(__file__).resolve().parent
@@ -357,6 +358,8 @@ class ProductWorker(QThread):
                 os.replace(temporary, target)
                 self.progress.emit(80, tr("integrity"))
                 self.install_dir.parent.mkdir(parents=True, exist_ok=True)
+                if running_product(self.install_dir / self.product['exe']):
+                    raise RuntimeError('Close ' + self.product['name'] + ' before updating. Your work has not been interrupted.')
                 if self.product["id"] == "cube":
                     args = [str(target), "--quiet", "--dir", str(self.install_dir)]
                     if self.action == "update":
@@ -378,6 +381,8 @@ class ProductWorker(QThread):
                 self.progress.emit(100, tr("installed_ok"))
                 self.done.emit(self.action, version, "", str(self.install_dir))
             elif self.action == "remove":
+                if running_product(self.install_dir / self.product['exe']):
+                    raise RuntimeError('Close ' + self.product['name'] + ' before uninstalling.')
                 self.progress.emit(25, tr("progress_remove"))
                 if self.product["id"] == "cube":
                     executable = self.install_dir / self.product["exe"]
@@ -1931,16 +1936,44 @@ class Hub(QMainWindow):
         else:self.start_task(product,"install")
 
     def launch_product(self,product):
+        if self.product_busy():
+            return
         exe=Path(self.state["paths"][product["id"]])/product["exe"]
         if not exe.is_file():self.notify(product["name"],tr("unsupported"));return
         try:
-            subprocess.Popen([str(exe)],cwd=str(exe.parent))
+            if not hasattr(self, 'launch_broker'):
+                self.launch_broker = LaunchBroker()
+                QApplication.instance().aboutToQuit.connect(self.launch_broker.close)
+            process = subprocess.Popen([str(exe)], cwd=str(exe.parent),
+                                       env=self.launch_broker.environment(product['id']))
+            self.ecosystem_processes = getattr(self, 'ecosystem_processes', [])
+            self.ecosystem_processes.append(process)
+            if not hasattr(self, 'ecosystem_timer'):
+                self.ecosystem_timer = QTimer(self)
+                self.ecosystem_timer.setInterval(3000)
+                self.ecosystem_timer.timeout.connect(self.poll_ecosystem)
+                self.ecosystem_timer.start()
             self.record_activity(product, "launch")
         except OSError as error:self.notify(tr("failed"),str(error))
 
     def start_task(self,product,action):
         if self.product_busy():
             return
+        if action in ('install', 'update', 'remove'):
+            try:
+                if running_product(Path(self.state['paths'][product['id']]) / product['exe']):
+                    messages = {
+                        'en': 'Close {name} before changing its installation. Your work will stay open until you close it yourself.',
+                        'ru': 'Закройте {name} перед изменением установки. Hub не прерывает работу приложения.',
+                        'ro': 'Închideți {name} înainte de a modifica instalarea.',
+                        'de': 'Schließen Sie {name}, bevor Sie die Installation ändern.',
+                        'es': 'Cierra {name} antes de modificar la instalación.',
+                        'fr': 'Fermez {name} avant de modifier son installation.'}
+                    self.notify(product['name'], messages[Hub.lang].format(name=product['name']))
+                    return
+            except OSError as error:
+                self.notify(tr('failed'), str(error))
+                return
         if action=="update" and not self.is_installed(product):action="install"
         for cards in getattr(self,"product_cards",{}).values():
             for button,_ in cards:button.setEnabled(False)
@@ -2486,6 +2519,13 @@ class Hub(QMainWindow):
             self.stop_page_animation()
 
     def closeEvent(self, event):
+        if (not getattr(self, 'ecosystem_quit', False) and
+                any(p.poll() is None for p in getattr(self, 'ecosystem_processes', [])) and
+                QSystemTrayIcon.isSystemTrayAvailable()):
+            self.ensure_ecosystem_tray()
+            self.hide()
+            event.ignore()
+            return
         if self.product_busy() and not self.closing:
             self.status_message(tr("running"))
             event.ignore()
@@ -2498,6 +2538,72 @@ class Hub(QMainWindow):
             QTimer.singleShot(150, lambda: self.close() if self.closing else None)
             return
         super().closeEvent(event)
+
+    def ensure_ecosystem_tray(self):
+        if hasattr(self, 'ecosystem_tray'):
+            self.ecosystem_tray.show()
+            return
+        tray = QSystemTrayIcon(self.windowIcon(), self)
+        menu = QMenu(self)
+        menu.addAction('Enigma Hub', self.restore_window)
+        for product in PRODUCTS:
+            menu.addAction(product['name'], lambda checked=False, p=product: self.launch_product(p))
+        menu.addSeparator()
+        exit_text = {'ru': 'Выйти из Hub', 'en': 'Quit Hub', 'ro': 'Închide Hub',
+                     'de': 'Hub beenden', 'es': 'Salir de Hub', 'fr': 'Quitter Hub'}
+        menu.addAction(exit_text[Hub.lang], self.quit_ecosystem)
+        tray.setContextMenu(menu)
+        tray.setToolTip('Enigma Hub')
+        tray.activated.connect(lambda reason: self.restore_window()
+                              if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick) else None)
+        tray.show()
+        self.ecosystem_tray = tray
+
+    def quit_ecosystem(self):
+        # Never terminate a product: Disk may be writing a snapshot or report.
+        if self.product_busy():
+            self.status_message(tr('running'))
+            return
+        self.ecosystem_quit = True
+        self.close()
+
+    def poll_ecosystem(self):
+        self.ecosystem_processes = [p for p in self.ecosystem_processes if p.poll() is None]
+        if not self.ecosystem_processes and hasattr(self, 'ecosystem_tray'):
+            self.ecosystem_tray.hide()
+            if not self.isVisible():
+                self.close()
+
+    def ecosystem_request(self, request):
+        if not isinstance(request, dict):
+            return
+        product = next((p for p in PRODUCTS if p['id'] == request.get('product')), None)
+        action = request.get('action')
+        if product is None or action not in ('open', 'launch', 'updates'):
+            return
+        raw = request.get('exe', '')
+        if raw:
+            exe = Path(raw)
+            # IPC accepts only the known product executable, never shell arguments.
+            if not exe.is_absolute() or exe.name.casefold() != product['exe'].casefold() or not exe.is_file():
+                return
+            try:
+                reject_reparse(exe)
+            except (ValueError, OSError):
+                return
+            if self.product_busy():
+                self.restore_window()
+                return
+            self.state['paths'][product['id']] = str(exe.parent)
+            self.save_state()
+            self.refresh_product_states()
+            self.refresh_library()
+        self.restore_window()
+        self.navigate(2, False)
+        if action == 'launch':
+            self.launch_product(product)
+        elif action == 'updates':
+            self.check_updates(include_hub=False)
 
     def restore_window(self):
         was_closing = self.closing
@@ -2516,6 +2622,13 @@ class Hub(QMainWindow):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--product', choices=('cube', 'disk'))
+    parser.add_argument('--action', choices=('open', 'launch', 'updates'), default='open')
+    parser.add_argument('--product-exe', default='')
+    args, _ = parser.parse_known_args()
+    request = {'product': args.product, 'action': args.action, 'exe': args.product_exe}
     configure_display()
     app = QApplication(sys.argv)
     app.setApplicationName("Enigma Hub")
@@ -2529,7 +2642,7 @@ def main():
     client = QLocalSocket()
     client.connectToServer(identity)
     if client.waitForConnected(250):
-        client.write(b"activate")
+        client.write(json.dumps(request).encode('utf-8') + b'\n')
         client.flush()
         client.waitForBytesWritten(250)
         client.disconnectFromServer()
@@ -2544,9 +2657,26 @@ def main():
     def activate_existing():
         connection = server.nextPendingConnection()
         if connection:
-            connection.disconnectFromServer()
-            connection.deleteLater()
-        window.restore_window()
+            connection.setParent(server)
+            buffer = bytearray()
+            def receive():
+                buffer.extend(bytes(connection.readAll()))
+                if len(buffer) > 8192:
+                    connection.abort()
+                    return
+                if b'\n' not in buffer and buffer != b'activate':
+                    return
+                try:
+                    incoming = json.loads(buffer.decode('utf-8')) if buffer != b'activate' else {}
+                    window.restore_window()
+                    window.ecosystem_request(incoming)
+                except (ValueError, OSError, TypeError):
+                    pass
+                connection.disconnectFromServer()
+            connection.readyRead.connect(receive)
+            connection.disconnected.connect(connection.deleteLater)
+            QTimer.singleShot(3000, connection.disconnectFromServer)
+            receive()
     server.newConnection.connect(activate_existing)
     available = screen.availableGeometry()
     window.resize(min(1040, available.width() - 24), min(625, available.height() - 46))
@@ -2564,6 +2694,8 @@ def main():
         intro.close()
         if motion:
             window.fade_page(window.stack.currentWidget())
+        if args.product:
+            window.ecosystem_request(request)
 
     QTimer.singleShot((1900 if motion else 450) if window.state["intro"] else 0, open_window)
     return app.exec_()
