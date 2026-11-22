@@ -1,4 +1,13 @@
-# Enigma Hub 1.3.1 setup recovery verification
+# Enigma Hub 1.3.2 taskbar launch verification
+
+Date: 2026-11-22.
+
+- The installed Start-menu shortcut had no System.AppUserModel.ID, while the process used EnigmaStudio.EnigmaHub. Windows launch/pinning could resolve the identity as a filename rather than the registered app.
+- Hub shortcuts now persist the same identity using the native Shell IPropertyStore, with proper COM lifetime and a copied LPWSTR value. Process identity uses a typed Windows API call and the shared constant. Shortcut creation failures are reported to the installer instead of silently ignored.
+- 69 tests passed, including real shortcut property save/reopen, repeated identity writes, preservation of executable and arguments, and the native variant layout.
+- The existing Hub shortcut was backed up and repaired on the affected PC. Windows app inventory reported EnigmaStudio.EnigmaHub, and launching that returned app identity opened the Hub window with no error dialog observed.
+
+## Previous 1.3.1 setup recovery verification
 
 Date: 2026-11-21 (client time).
 

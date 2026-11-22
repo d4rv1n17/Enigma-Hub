@@ -22,6 +22,7 @@ from hub_safety import reject_reparse
 from hub_products import installed_version, version_key
 from hub_games import find_installed_game, valid_web_url
 from hub_ecosystem import LaunchBroker, running_product, installed_hub_ready
+from hub_windows import set_process_identity, set_shortcut_identity
 
 from PyQt5.QtCore import Qt, QRectF, QSize, QThread, QTimer, QElapsedTimer, QVariantAnimation, QPropertyAnimation, QEasingCurve, pyqtSignal
 from PyQt5.QtGui import QColor, QCursor, QFont, QIcon, QIconEngine, QImage, QLinearGradient, QPainter, QPainterPath, QPixmap, QTextDocument
@@ -506,7 +507,10 @@ def create_shortcuts(name, executable):
     escaped_name = name.replace("'", "''")
     escaped_exe = str(executable).replace("'", "''")
     script = "$s=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) '" + escaped_name + ".lnk')); $s.TargetPath='" + escaped_exe + "'; $s.WorkingDirectory='" + str(executable.parent).replace("'", "''") + "'; $s.Save()"
-    subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if name == 'Enigma Hub':
+        shortcut = Path(os.environ['APPDATA']) / 'Microsoft/Windows/Start Menu/Programs/Enigma Hub.lnk'
+        set_shortcut_identity(shortcut)
 
 
 def remove_shortcuts(name):
@@ -2653,7 +2657,7 @@ def main():
     app.setApplicationName("Enigma Hub")
     app.setApplicationDisplayName("Enigma Hub")
     if sys.platform == "win32":
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("EnigmaStudio.EnigmaHub")
+        set_process_identity()
     app.setOrganizationName("Enigma Studio")
     app.setStyle("Fusion")
     app.setFont(QFont("Segoe UI", 10))
